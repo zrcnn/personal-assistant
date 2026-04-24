@@ -54,7 +54,7 @@
         v-for="tag in tags.slice(0, 8)"
         :key="tag.id"
         class="tag-chip"
-        :style="{ background: tag.color + '20', border-color: tag.color }"
+        :style="{ background: tag.color + '20', borderColor: tag.color }"
         @click="filterTag = tag.name; applyFilters()"
       >
         #{{ tag.name }}
