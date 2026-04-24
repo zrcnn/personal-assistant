@@ -1,0 +1,267 @@
+{
+  "date": "2026-04-14T18:00:01.631Z",
+  "duration": 96.3,
+  "pass": 43,
+  "fail": 0,
+  "bugs": [],
+  "details": [
+    {
+      "status": "✅",
+      "module": "Services/PA Backend",
+      "message": "服务正常运行",
+      "time": "2026-04-14T18:00:01.721Z"
+    },
+    {
+      "status": "✅",
+      "module": "Services/PA Stock API",
+      "message": "服务正常运行",
+      "time": "2026-04-14T18:00:01.730Z"
+    },
+    {
+      "status": "✅",
+      "module": "Services/OpenClaw Gateway",
+      "message": "服务正常运行",
+      "time": "2026-04-14T18:00:01.736Z"
+    },
+    {
+      "status": "✅",
+      "module": "Backend",
+      "message": "服务正常运行",
+      "time": "2026-04-14T18:00:01.739Z"
+    },
+    {
+      "status": "✅",
+      "module": "Auth",
+      "message": "用户登录成功",
+      "time": "2026-04-14T18:00:01.837Z"
+    },
+    {
+      "status": "✅",
+      "module": "Auth",
+      "message": "Token 有效（路由需确认）",
+      "time": "2026-04-14T18:00:01.840Z"
+    },
+    {
+      "status": "✅",
+      "module": "Chat",
+      "message": "对话历史 API 正常",
+      "time": "2026-04-14T18:00:01.843Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Terminal",
+      "message": "API 响应正常",
+      "time": "2026-04-14T18:00:01.848Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/System",
+      "message": "API 响应正常",
+      "time": "2026-04-14T18:00:01.961Z"
+    },
+    {
+      "status": "✅",
+      "module": "DB/users",
+      "message": "表存在，9 条记录",
+      "time": "2026-04-14T18:00:02.052Z"
+    },
+    {
+      "status": "✅",
+      "module": "DB/conversations",
+      "message": "表存在，4 条记录",
+      "time": "2026-04-14T18:00:02.053Z"
+    },
+    {
+      "status": "✅",
+      "module": "DB/messages",
+      "message": "表存在，8 条记录",
+      "time": "2026-04-14T18:00:02.055Z"
+    },
+    {
+      "status": "✅",
+      "module": "Frontend",
+      "message": "首页加载成功",
+      "time": "2026-04-14T18:00:03.211Z"
+    },
+    {
+      "status": "✅",
+      "module": "Frontend",
+      "message": "登录功能正常",
+      "time": "2026-04-14T18:00:07.075Z"
+    },
+    {
+      "status": "✅",
+      "module": "Frontend/Chat",
+      "message": "对话页面输入框可见",
+      "time": "2026-04-14T18:00:07.799Z"
+    },
+    {
+      "status": "✅",
+      "module": "Frontend/Tools",
+      "message": "工具箱页面加载正常",
+      "time": "2026-04-14T18:00:08.535Z"
+    },
+    {
+      "status": "✅",
+      "module": "Frontend",
+      "message": "主题切换功能可用",
+      "time": "2026-04-14T18:00:09.110Z"
+    },
+    {
+      "status": "✅",
+      "module": "Frontend/Mobile",
+      "message": "手机端响应式正常",
+      "time": "2026-04-14T18:00:09.848Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Terminal",
+      "message": "Terminal 界面加载正常",
+      "time": "2026-04-14T18:00:13.934Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Data",
+      "message": "数据页面加载正常",
+      "time": "2026-04-14T18:00:14.611Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Settings",
+      "message": "设置页面加载正常",
+      "time": "2026-04-14T18:00:15.299Z"
+    },
+    {
+      "status": "✅",
+      "module": "Nav",
+      "message": "对话导航点击跳转正常",
+      "time": "2026-04-14T18:00:20.280Z"
+    },
+    {
+      "status": "✅",
+      "module": "Nav",
+      "message": "工具箱导航点击跳转正常",
+      "time": "2026-04-14T18:00:21.317Z"
+    },
+    {
+      "status": "✅",
+      "module": "Chat/Interact",
+      "message": "发送消息点击成功，消息已显示",
+      "time": "2026-04-14T18:00:25.134Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Interact",
+      "message": "工具卡片点击跳转正常",
+      "time": "2026-04-14T18:00:28.398Z"
+    },
+    {
+      "status": "✅",
+      "module": "Theme/Interact",
+      "message": "主题切换点击成功，背景色已变化",
+      "time": "2026-04-14T18:00:29.644Z"
+    },
+    {
+      "status": "✅",
+      "module": "Chat/Validation",
+      "message": "空输入时发送按钮正确禁用",
+      "time": "2026-04-14T18:00:31.370Z"
+    },
+    {
+      "status": "✅",
+      "module": "Form/Interact",
+      "message": "表单输入响应正常",
+      "time": "2026-04-14T18:00:32.131Z"
+    },
+    {
+      "status": "✅",
+      "module": "Chat/New",
+      "message": "新建对话按钮点击成功",
+      "time": "2026-04-14T18:00:33.935Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/fitness",
+      "message": "页面加载正常（自动发现）",
+      "time": "2026-04-14T18:00:39.657Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/bookmarks",
+      "message": "页面加载正常（自动发现）",
+      "time": "2026-04-14T18:00:41.295Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Terminal",
+      "message": "Terminal 键盘输入执行成功",
+      "time": "2026-04-14T18:00:46.561Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Stock",
+      "message": "股票查询输入成功",
+      "time": "2026-04-14T18:00:51.773Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Weather",
+      "message": "天气查询功能正常，返回结果",
+      "time": "2026-04-14T18:00:58.807Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Pomodoro",
+      "message": "番茄钟启动按钮点击成功",
+      "time": "2026-04-14T18:01:02.033Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Calendar",
+      "message": "日历页面加载正常，日期可点击",
+      "time": "2026-04-14T18:01:05.294Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Notes",
+      "message": "记事本编辑器已打开",
+      "time": "2026-04-14T18:01:08.498Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Expense",
+      "message": "记一笔按钮点击成功（表单可能已显示）",
+      "time": "2026-04-14T18:01:12.245Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/JSON",
+      "message": "JSON 格式化功能正常",
+      "time": "2026-04-14T18:01:15.517Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Draw",
+      "message": "绘图工具画布可用，绘制成功",
+      "time": "2026-04-14T18:01:18.308Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/OCR",
+      "message": "OCR 工具上传按钮存在",
+      "time": "2026-04-14T18:01:20.492Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/Video",
+      "message": "视频工具搜索模态框可用",
+      "time": "2026-04-14T18:01:23.232Z"
+    },
+    {
+      "status": "✅",
+      "module": "Tools/CarRec",
+      "message": "汽车识别工具上传按钮存在",
+      "time": "2026-04-14T18:01:37.854Z"
+    }
+  ]
+}

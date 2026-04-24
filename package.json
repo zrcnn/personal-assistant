@@ -1,0 +1,21 @@
+{
+  "name": "personalassistant",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/full-test-suite.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.20.0"
+  },
+  "devDependencies": {
+    "node-fetch": "^3.3.2",
+    "playwright": "^1.59.1"
+  }
+}

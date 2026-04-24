@@ -1,0 +1,251 @@
+{
+  "version": "1.0",
+  "created_at": "2026-04-03T21:23:12.282339",
+  "num_classes": 27,
+  "image_size": 224,
+  "brands": {
+    "0": {
+      "id": "mercedes",
+      "name": "梅赛德斯-奔驰",
+      "icon": "⭐",
+      "country": "德国",
+      "manufacturer": "戴姆勒集团",
+      "priceRange": "30万-300万",
+      "year": "1926至今"
+    },
+    "1": {
+      "id": "bmw",
+      "name": "宝马",
+      "icon": "🔵",
+      "country": "德国",
+      "manufacturer": "宝马集团",
+      "priceRange": "25万-200万",
+      "year": "1916至今"
+    },
+    "2": {
+      "id": "audi",
+      "name": "奥迪",
+      "icon": "⭕",
+      "country": "德国",
+      "manufacturer": "大众集团",
+      "priceRange": "20万-180万",
+      "year": "1909至今"
+    },
+    "3": {
+      "id": "volkswagen",
+      "name": "大众",
+      "icon": "VW",
+      "country": "德国",
+      "manufacturer": "大众集团",
+      "priceRange": "10万-80万",
+      "year": "1937至今"
+    },
+    "4": {
+      "id": "toyota",
+      "name": "丰田",
+      "icon": "T",
+      "country": "日本",
+      "manufacturer": "丰田汽车",
+      "priceRange": "8万-100万",
+      "year": "1937至今"
+    },
+    "5": {
+      "id": "honda",
+      "name": "本田",
+      "icon": "H",
+      "country": "日本",
+      "manufacturer": "本田技研",
+      "priceRange": "8万-50万",
+      "year": "1948至今"
+    },
+    "6": {
+      "id": "nissan",
+      "name": "日产",
+      "icon": "N",
+      "country": "日本",
+      "manufacturer": "日产汽车",
+      "priceRange": "8万-60万",
+      "year": "1933至今"
+    },
+    "7": {
+      "id": "ford",
+      "name": "福特",
+      "icon": "F",
+      "country": "美国",
+      "manufacturer": "福特汽车",
+      "priceRange": "8万-80万",
+      "year": "1903至今"
+    },
+    "8": {
+      "id": "chevrolet",
+      "name": "雪佛兰",
+      "icon": "⚡",
+      "country": "美国",
+      "manufacturer": "通用汽车",
+      "priceRange": "7万-50万",
+      "year": "1911至今"
+    },
+    "9": {
+      "id": "buick",
+      "name": "别克",
+      "icon": "🛡️",
+      "country": "美国",
+      "manufacturer": "通用汽车",
+      "priceRange": "12万-50万",
+      "year": "1899至今"
+    },
+    "10": {
+      "id": "hyundai",
+      "name": "现代",
+      "icon": "H",
+      "country": "韩国",
+      "manufacturer": "现代汽车",
+      "priceRange": "8万-35万",
+      "year": "1967至今"
+    },
+    "11": {
+      "id": "kia",
+      "name": "起亚",
+      "icon": "K",
+      "country": "韩国",
+      "manufacturer": "起亚汽车",
+      "priceRange": "7万-30万",
+      "year": "1944至今"
+    },
+    "12": {
+      "id": "mazda",
+      "name": "马自达",
+      "icon": "M",
+      "country": "日本",
+      "manufacturer": "马自达",
+      "priceRange": "10万-40万",
+      "year": "1920至今"
+    },
+    "13": {
+      "id": "lexus",
+      "name": "雷克萨斯",
+      "icon": "L",
+      "country": "日本",
+      "manufacturer": "丰田汽车",
+      "priceRange": "25万-150万",
+      "year": "1989至今"
+    },
+    "14": {
+      "id": "porsche",
+      "name": "保时捷",
+      "icon": "🐎",
+      "country": "德国",
+      "manufacturer": "大众集团",
+      "priceRange": "60万-500万",
+      "year": "1931至今"
+    },
+    "15": {
+      "id": "landrover",
+      "name": "路虎",
+      "icon": "🏔️",
+      "country": "英国",
+      "manufacturer": "塔塔汽车",
+      "priceRange": "35万-200万",
+      "year": "1948至今"
+    },
+    "16": {
+      "id": "jaguar",
+      "name": "捷豹",
+      "icon": "🐆",
+      "country": "英国",
+      "manufacturer": "塔塔汽车",
+      "priceRange": "30万-150万",
+      "year": "1922至今"
+    },
+    "17": {
+      "id": "volvo",
+      "name": "沃尔沃",
+      "icon": "⬆️",
+      "country": "瑞典",
+      "manufacturer": "吉利汽车",
+      "priceRange": "25万-100万",
+      "year": "1927至今"
+    },
+    "18": {
+      "id": "cadillac",
+      "name": "凯迪拉克",
+      "icon": "🛡️",
+      "country": "美国",
+      "manufacturer": "通用汽车",
+      "priceRange": "25万-150万",
+      "year": "1902至今"
+    },
+    "19": {
+      "id": "tesla",
+      "name": "特斯拉",
+      "icon": "T",
+      "country": "美国",
+      "manufacturer": "特斯拉",
+      "priceRange": "25万-100万",
+      "year": "2003至今"
+    },
+    "20": {
+      "id": "byd",
+      "name": "比亚迪",
+      "icon": "BYD",
+      "country": "中国",
+      "manufacturer": "比亚迪",
+      "priceRange": "6万-100万",
+      "year": "1995至今"
+    },
+    "21": {
+      "id": "geely",
+      "name": "吉利",
+      "icon": "G",
+      "country": "中国",
+      "manufacturer": "吉利汽车",
+      "priceRange": "5万-30万",
+      "year": "1986至今"
+    },
+    "22": {
+      "id": "changan",
+      "name": "长安",
+      "icon": "C",
+      "country": "中国",
+      "manufacturer": "长安汽车",
+      "priceRange": "5万-25万",
+      "year": "1862至今"
+    },
+    "23": {
+      "id": "haval",
+      "name": "哈弗",
+      "icon": "H",
+      "country": "中国",
+      "manufacturer": "长城汽车",
+      "priceRange": "8万-25万",
+      "year": "2013至今"
+    },
+    "24": {
+      "id": "nio",
+      "name": "蔚来",
+      "icon": "N",
+      "country": "中国",
+      "manufacturer": "蔚来汽车",
+      "priceRange": "30万-60万",
+      "year": "2014至今"
+    },
+    "25": {
+      "id": "xpeng",
+      "name": "小鹏",
+      "icon": "X",
+      "country": "中国",
+      "manufacturer": "小鹏汽车",
+      "priceRange": "15万-45万",
+      "year": "2014至今"
+    },
+    "26": {
+      "id": "li",
+      "name": "理想",
+      "icon": "Li",
+      "country": "中国",
+      "manufacturer": "理想汽车",
+      "priceRange": "30万-50万",
+      "year": "2015至今"
+    }
+  }
+}

@@ -1,0 +1,1158 @@
+<template>
+  <div class="chat-page">
+    <!-- Sidebar -->
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
+      <div class="sidebar-header">
+        <h3 class="sidebar-title">对话</h3>
+        <button class="new-chat-btn" @click="createConversation" title="新建对话">
+          <span>+</span>
+        </button>
+      </div>
+      
+      <div class="conversation-list">
+        <div
+          v-for="conv in conversations"
+          :key="conv.id"
+          class="conv-item"
+          :class="{ active: currentId == conv.id }"
+          @click="selectConversation(conv.id)"
+          @contextmenu.prevent="showContextMenu($event, conv)"
+        >
+          <div class="conv-content">
+            <span class="conv-title">{{ conv.title || '新对话' }}</span>
+            <span class="conv-time">{{ formatTime(conv.updatedAt) }}</span>
+          </div>
+          <button class="conv-delete-btn" @click.stop="quickDelete(conv)" title="删除对话">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div v-if="conversations.length === 0 && !loading" class="conv-empty">
+          暂无对话，点击 + 开始
+        </div>
+      </div>
+    </aside>
+    
+    <!-- Sidebar overlay for mobile -->
+    <div v-if="sidebarOpen" class="sidebar-overlay" @click="sidebarOpen = false"></div>
+    
+    <!-- Chat Area -->
+    <section class="chat-area">
+      <!-- Chat Header (mobile) -->
+      <div class="chat-header">
+        <button class="sidebar-toggle" @click="sidebarOpen = !sidebarOpen">
+          ☰
+        </button>
+        <span class="chat-header-title">{{ currentTitle }}</span>
+      </div>
+      
+      <!-- Messages -->
+      <div class="messages-container" ref="messagesRef" @scroll="handleScroll">
+        <div v-if="!currentId" class="welcome-screen">
+          <div class="welcome-icon">🤖</div>
+          <h2>你好，我是 NE</h2>
+          <p>你的个人 AI 助手</p>
+          <p class="welcome-hint">选择一个对话或创建新的开始聊天</p>
+        </div>
+        
+        <template v-else>
+          <div v-if="loadingMessages" class="loading-messages">加载中...</div>
+          
+          <div
+            v-for="msg in messages"
+            :key="msg.id"
+            class="message"
+            :class="msg.role"
+          >
+            <div class="message-avatar">
+              {{ msg.role === 'user' ? '👤' : '🤖' }}
+            </div>
+            <div class="message-bubble" :class="msg.role">
+              <div v-if="msg.role === 'assistant'" class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+              <div v-else class="message-text">{{ msg.content }}</div>
+            </div>
+          </div>
+          
+          <div v-if="isSending" class="message assistant">
+            <div class="message-avatar">🤖</div>
+            <div class="message-bubble assistant">
+              <div class="typing-indicator">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      
+      <!-- Input Area -->
+      <div v-if="currentId" class="input-area">
+        <div class="input-wrapper">
+          <button class="attach-btn" @click="$refs.fileInput.click()" title="添加附件">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6h-1.5v9.5a2.5 2.5 0 0 0 5 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6H16.5z"/>
+            </svg>
+          </button>
+          <textarea
+            ref="inputRef"
+            v-model="inputText"
+            :placeholder="attachedFiles.length ? `${attachedFiles.length} 个文件已添加` : '输入消息... (Enter 发送, Shift+Enter 换行)'"
+            @keydown="handleKeydown"
+            @input="autoResize"
+            rows="1"
+          ></textarea>
+          <button class="send-btn" @click="sendMessage" :disabled="(!inputText.trim() && attachedFiles.length === 0) || isSending">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </div>
+        <!-- Attachment preview -->
+        <div v-if="attachedFiles.length" class="attachment-preview">
+          <div v-for="(file, idx) in attachedFiles" :key="idx" class="attachment-item">
+            <span class="attachment-icon">{{ getFileIcon(file) }}</span>
+            <span class="attachment-name">{{ file.name }}</span>
+            <span class="attachment-size">{{ formatFileSize(file.size) }}</span>
+            <button class="attachment-remove" @click="removeFile(idx)">✕</button>
+          </div>
+        </div>
+        <input ref="fileInput" type="file" multiple style="display:none" @change="handleFileSelect" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.md,.json,.xml,.zip,.rar,.7z,.mp3,.mp4" />
+      </div>
+    </section>
+    
+    <!-- Context Menu -->
+    <transition name="dropdown">
+      <div
+        v-if="contextMenu.visible"
+        class="context-menu"
+        :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+      >
+        <button class="context-item" @click="startRename">
+          ✏️ 重命名
+        </button>
+        <button class="context-item danger" @click="deleteConversation">
+          🗑️ 删除
+        </button>
+      </div>
+    </transition>
+    
+    <!-- Rename Modal -->
+    <transition name="fade">
+      <div v-if="renameModal.visible" class="modal-overlay" @click.self="renameModal.visible = false">
+        <div class="modal">
+          <h3>重命名对话</h3>
+          <input
+            v-model="renameModal.title"
+            @keydown.enter="confirmRename"
+            placeholder="输入新标题"
+            ref="renameInputRef"
+          />
+          <div class="modal-actions">
+            <button class="modal-btn cancel" @click="renameModal.visible = false">取消</button>
+            <button class="modal-btn confirm" @click="confirmRename">确定</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Delete Confirm Modal -->
+    <transition name="fade">
+      <div v-if="deleteConfirm.visible" class="modal-overlay" @click.self="deleteConfirm.visible = false">
+        <div class="modal delete-modal">
+          <div class="delete-icon">🗑️</div>
+          <h3>删除对话</h3>
+          <p class="delete-text">确定要删除「{{ deleteConfirm.conversation?.title || '新对话' }}」吗？此操作不可恢复。</p>
+          <div class="modal-actions">
+            <button class="modal-btn cancel" @click="deleteConfirm.visible = false">取消</button>
+            <button class="modal-btn danger" @click="confirmDelete">删除</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
+<script setup>
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useChatStore } from '../stores/chat'
+import { marked } from 'marked'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github-dark.css'
+
+const router = useRouter()
+const route = useRoute()
+const chatStore = useChatStore()
+
+// Configure marked
+marked.setOptions({
+  highlight(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value
+    }
+    return hljs.highlightAuto(code).value
+  },
+  breaks: true,
+  gfm: true
+})
+
+// Destructure from store for template binding
+const {
+  conversations,
+  messages,
+  currentId,
+  currentTitle,
+  loading,
+  loadingMessages,
+  isSending,
+  sidebarOpen,
+  attachedFiles,
+} = chatStore
+
+// Local-only state (UI-specific, not persisted across page switches)
+const inputText = ref('')
+const messagesRef = ref(null)
+const inputRef = ref(null)
+const renameInputRef = ref(null)
+const fileInput = ref(null)
+const contextMenu = ref({ visible: false, x: 0, y: 0, conversation: null })
+const renameModal = ref({ visible: false, title: '', conversation: null })
+const deleteConfirm = ref({ visible: false, conversation: null })
+
+// Format time
+function formatTime(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now - date
+  const mins = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+  
+  if (mins < 1) return '刚刚'
+  if (mins < 60) return `${mins}分钟前`
+  if (hours < 24) return `${hours}小时前`
+  if (days < 7) return `${days}天前`
+  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+}
+
+// Render markdown
+function renderMarkdown(content) {
+  if (!content) return ''
+  try {
+    return marked.parse(content)
+  } catch {
+    return content
+  }
+}
+
+// Scroll to bottom after messages change
+watch(messages, () => scrollToBottom(), { deep: true })
+
+// Create conversation
+async function createConversation() {
+  const conv = await chatStore.createConversation()
+  if (conv) {
+    selectConversation(conv.id)
+  }
+}
+
+// Select conversation (wraps store action + router push)
+function selectConversation(id) {
+  chatStore.selectConversation(id)
+  router.push(`/chat/${id}`)
+  scrollToBottom()
+}
+
+// Delete conversation
+async function deleteConversation() {
+  if (!contextMenu.value.conversation) return
+  await chatStore.deleteConversation(contextMenu.value.conversation.id)
+  contextMenu.value.visible = false
+  router.push('/chat')
+}
+
+// Quick delete with confirmation (mobile-friendly)
+function quickDelete(conv) {
+  deleteConfirm.value = { visible: true, conversation: conv }
+}
+
+async function confirmDelete() {
+  if (!deleteConfirm.value.conversation) return
+  await chatStore.deleteConversation(deleteConfirm.value.conversation.id)
+  deleteConfirm.value.visible = false
+  router.push('/chat')
+}
+
+// Rename
+function startRename() {
+  renameModal.value.title = contextMenu.value.conversation?.title || ''
+  renameModal.value.conversation = contextMenu.value.conversation
+  contextMenu.value.visible = false
+  renameModal.value.visible = true
+  nextTick(() => {
+    renameInputRef.value?.focus()
+  })
+}
+
+async function confirmRename() {
+  if (!renameModal.value.conversation) return
+  await chatStore.renameConversation(renameModal.value.conversation.id, renameModal.value.title)
+  renameModal.value.visible = false
+}
+
+// File handling
+function getFileIcon(file) {
+  const name = file.name.toLowerCase()
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(name)) return '🖼️'
+  if (/\.pdf$/i.test(name)) return '📄'
+  if (/\.(doc|docx)$/i.test(name)) return '📝'
+  if (/\.(xls|xlsx|csv)$/i.test(name)) return '📊'
+  if (/\.(ppt|pptx)$/i.test(name)) return '📽️'
+  if (/\.(zip|rar|7z)$/i.test(name)) return '📦'
+  if (/\.(mp3|mp4|wav)$/i.test(name)) return '🎵'
+  if (/\.(txt|md|json|xml|html|css|js|py|java|c|cpp)$/i.test(name)) return '📄'
+  return '📎'
+}
+
+function formatFileSize(bytes) {
+  return chatStore.formatFileSize(bytes)
+}
+
+async function handleFileSelect(e) {
+  const files = Array.from(e.target.files)
+  for (const file of files) {
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(file.name)) {
+      attachedFiles.value.push({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        preview: URL.createObjectURL(file),
+        raw: file
+      })
+    } else {
+      if (file.size < 100 * 1024 && /\.(txt|md|json|xml|html|css|js|py|java|c|cpp|csv)$/i.test(file.name)) {
+        try {
+          const text = await file.text()
+          attachedFiles.value.push({ name: file.name, size: file.size, type: file.type, content: text, raw: file })
+        } catch {
+          attachedFiles.value.push({ name: file.name, size: file.size, type: file.type, raw: file })
+        }
+      } else {
+        attachedFiles.value.push({ name: file.name, size: file.size, type: file.type, raw: file })
+      }
+    }
+  }
+  e.target.value = ''
+}
+
+function removeFile(idx) {
+  const f = attachedFiles.value[idx]
+  if (f?.preview) URL.revokeObjectURL(f.preview)
+  attachedFiles.value.splice(idx, 1)
+}
+
+// Send message (delegates to store — persists across page switches)
+async function sendMessage() {
+  if ((!inputText.value.trim() && attachedFiles.value.length === 0) || !currentId.value || isSending.value) return
+
+  const content = inputText.value.trim()
+  const files = [...attachedFiles.value]
+  inputText.value = ''
+  attachedFiles.value = []
+  nextTick(() => autoResize())
+
+  // Delegate to store — the promise runs even if component unmounts
+  chatStore.sendMessage(content, files)
+  scrollToBottom()
+}
+
+// Scroll
+function scrollToBottom() {
+  nextTick(() => {
+    if (messagesRef.value) {
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+    }
+  })
+}
+
+function handleScroll() {
+  // Future: implement scroll-to-top loading
+}
+
+// Input handling
+function handleKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    sendMessage()
+  }
+}
+
+function autoResize() {
+  const textarea = inputRef.value
+  if (!textarea) return
+  textarea.style.height = 'auto'
+  textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'
+}
+
+// Context menu
+function showContextMenu(e, conv) {
+  contextMenu.value = { visible: true, x: e.clientX, y: e.clientY, conversation: conv }
+}
+
+function closeContextMenu() {
+  contextMenu.value.visible = false
+}
+
+// Watch route — sync URL with store state
+watch(() => route.params.id, (id) => {
+  if (id) {
+    const conv = chatStore.findConversation(id)
+    if (conv) {
+      chatStore.selectConversation(id)
+      nextTick(() => scrollToBottom())
+    }
+  } else {
+    chatStore.clearCurrent()
+  }
+})
+
+// Click outside to close context menu
+function handleGlobalClick(e) {
+  if (contextMenu.value.visible) {
+    closeContextMenu()
+  }
+}
+
+onMounted(() => {
+  // Only load conversations if store is empty (preserves state on page switch-back)
+  if (conversations.value.length === 0) {
+    chatStore.loadConversations()
+  }
+  document.addEventListener('click', handleGlobalClick)
+
+  // Watch for conversations loaded, then auto-select most recent (only on first load)
+  const unwatch = watch(conversations, (convs) => {
+    if (convs.length > 0 && !currentId.value) {
+      // If URL has an id, select that conversation
+      if (route.params.id) {
+        const conv = convs.find(c => c.id == route.params.id)
+        if (conv) {
+          chatStore.selectConversation(conv.id)
+          unwatch()
+          nextTick(() => scrollToBottom())
+          return
+        }
+      }
+      // Otherwise, auto-select the most recent conversation
+      const latest = convs[0]
+      if (latest) {
+        selectConversation(latest.id)
+      }
+    } else if (convs.length === 0 && !route.params.id) {
+      chatStore.clearCurrent()
+    }
+    unwatch()
+  }, { immediate: true })
+
+  // If returning to this page with existing state, just scroll to bottom
+  if (currentId.value && messages.value.length > 0) {
+    nextTick(() => scrollToBottom())
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleGlobalClick)
+})
+</script>
+
+<style scoped>
+.chat-page {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: transform var(--transition-slow);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.new-chat-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.new-chat-btn:hover {
+  background: var(--accent-hover);
+  transform: scale(1.1);
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.conv-item {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  margin-bottom: 2px;
+}
+
+.conv-item:hover {
+  background: var(--bg-hover);
+}
+
+.conv-item.active {
+  background: var(--accent-light);
+  border-left: 3px solid var(--accent);
+}
+
+.conv-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.conv-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.conv-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 40px 20px;
+}
+
+/* Delete button on conversation item */
+.conv-delete-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.conv-item {
+  position: relative;
+}
+
+/* Desktop: show on hover */
+@media (min-width: 769px) {
+  .conv-delete-btn {
+    opacity: 0;
+  }
+  .conv-item:hover .conv-delete-btn {
+    opacity: 1;
+  }
+}
+
+/* Mobile: always show but subtle */
+@media (max-width: 768px) {
+  .conv-delete-btn {
+    opacity: 0.5;
+  }
+}
+
+.conv-delete-btn:hover {
+  background: rgba(231, 76, 60, 0.15);
+  color: var(--danger);
+}
+
+/* Delete modal */
+.delete-modal {
+  text-align: center;
+}
+
+.delete-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.delete-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.modal-btn.danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.modal-btn.danger:hover {
+  opacity: 0.9;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+/* Chat Area */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-primary);
+}
+
+.chat-header {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.sidebar-toggle {
+  font-size: 20px;
+  color: var(--text-secondary);
+  padding: 4px;
+}
+
+.chat-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Messages */
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  scroll-behavior: smooth;
+}
+
+.welcome-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.welcome-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.welcome-screen h2 {
+  font-size: 24px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.welcome-hint {
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.loading-messages {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px;
+}
+
+.message {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  max-width: 800px;
+}
+
+.message.user {
+  flex-direction: row-reverse;
+  margin-left: auto;
+}
+
+.message-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.message-bubble {
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.message-bubble.user {
+  background: var(--user-bubble);
+  color: var(--user-bubble-text);
+  border-bottom-right-radius: 4px;
+}
+
+.message-bubble.assistant {
+  background: var(--ai-bubble);
+  color: var(--ai-bubble-text);
+  border-bottom-left-radius: 4px;
+}
+
+.message-text {
+  white-space: pre-wrap;
+}
+
+/* Markdown in messages */
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.markdown-body :deep(p) {
+  margin-bottom: 8px;
+}
+
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(pre) {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.markdown-body :deep(code) {
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 13px;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.markdown-body :deep(blockquote) {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+.markdown-body :deep(a) {
+  color: #a29bfe;
+}
+
+.markdown-body :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.markdown-body :deep(th) {
+  background: var(--bg-tertiary);
+}
+
+/* Typing Indicator */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+/* Input Area */
+.input-area {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 auto;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  transition: border-color var(--transition);
+}
+
+.input-wrapper:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.input-wrapper textarea {
+  flex: 1;
+  border: none;
+  background: transparent;
+  resize: none;
+  padding: 6px 0;
+  max-height: 200px;
+  line-height: 1.5;
+}
+
+.input-wrapper textarea:focus {
+  box-shadow: none;
+}
+
+.send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.send-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+
+.send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px var(--shadow);
+  overflow: hidden;
+  z-index: 300;
+  min-width: 140px;
+}
+
+.context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+}
+
+.context-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.context-item.danger:hover {
+  color: var(--danger);
+  background: rgba(231, 76, 60, 0.1);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 400;
+  padding: 20px;
+}
+
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 16px 48px var(--shadow);
+}
+
+.modal h3 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+}
+
+.modal input {
+  margin-bottom: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-btn {
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.modal-btn.cancel {
+  color: var(--text-secondary);
+}
+
+.modal-btn.cancel:hover {
+  background: var(--bg-hover);
+}
+
+.modal-btn.confirm {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.modal-btn.confirm:hover {
+  background: var(--accent-hover);
+}
+
+/* Attachment styles */
+.attachment-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px 0;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 250px;
+}
+
+.attachment-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.attachment-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.attachment-size {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.attachment-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.attachment-remove:hover {
+  color: var(--danger);
+}
+
+.attach-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.attach-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: var(--navbar-height);
+    left: 0;
+    bottom: var(--bottom-tab-height);
+    z-index: 90;
+    transform: translateX(-100%);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 89;
+  }
+
+  .chat-header {
+    display: flex;
+  }
+
+  .message-bubble {
+    max-width: 85%;
+  }
+
+  .messages-container {
+    padding: 12px;
+  }
+
+  .input-area {
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .messages-container {
+    padding: 8px;
+  }
+
+  .message {
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .message-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+
+  .message-bubble {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .input-area {
+    padding: 8px 12px;
+  }
+}
+</style>

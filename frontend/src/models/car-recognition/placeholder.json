@@ -1,0 +1,4 @@
+{
+  "note": "模型文件将在训练完成后生成",
+  "instructions": "运行 python train_car_recognition.py 进行训练"
+}

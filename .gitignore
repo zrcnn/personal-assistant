@@ -1,0 +1,6 @@
+node_modules/
+uploads/
+mysql-data/
+backend/public/assets/
+*.log
+.env
