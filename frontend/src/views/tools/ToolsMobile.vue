@@ -28,6 +28,7 @@ const tools = [
   { icon: '🔖', name: '网址收藏', desc: '收藏常用网址', route: '/tools/bookmarks' },
   { icon: '🔧', name: 'JSON 工具', desc: 'JSON 格式化校验', route: '/tools/json' },
   { icon: '📁', name: '文件管理', desc: '文件浏览、上传、下载、打包', route: '/tools/file-manager' },
+  { icon: '📰', name: '新闻', desc: 'AI编程新闻日报', route: '/tools/news' },
 ]
 
 const isAdminUser = computed(() => localStorage.getItem('username') === 'zrc')

@@ -129,6 +129,11 @@ const routes = [
         component: lazyLoad(() => import('../views/FileManager.vue'))
       },
       {
+        path: 'tools/news',
+        name: 'News',
+        component: lazyLoad(() => import('../views/NewsView.vue'))
+      },
+      {
         path: 'system',
         meta: { admin: true },
         name: 'System',
