@@ -81,6 +81,11 @@ app.use('/api/fitness', fitnessRoutes);
 app.use('/api/user-api-keys', userApiKeysRoutes);
 app.use('/api/model-usage', modelUsageRoutes);
 app.use('/api/ide', ideRoutes);
+
+// News sync webhook (no user auth, uses internal token) - must be BEFORE authMiddleware
+const { newsSyncHandler } = require('./routes/tools');
+app.use('/api/tools', newsSyncHandler);
+
 app.use('/api/tools', authMiddleware, toolsRoutes);
 app.use('/api/tools', authMiddleware, ocrRoutes);
 app.use('/api/tools', authMiddleware, videoRoutes);

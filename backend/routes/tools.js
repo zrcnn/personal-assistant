@@ -892,4 +892,48 @@ router.get('/news/categories', async (req, res) => {
   }
 });
 
+// Standalone sync handler (no auth middleware) for webhook
+const newsSyncRouter = require('express').Router();
+newsSyncRouter.post('/news/sync', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace('Bearer ', '');
+    if (token !== NEWS_SYNC_TOKEN) {
+      return res.status(403).json({ error: '无权限访问' });
+    }
+
+    const { job_id, date, title, content, category, tags, raw_content } = req.body;
+    if (!job_id || !date || !title || !content) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+
+    // Check if already exists (idempotent)
+    const [existing] = await pool.execute(
+      'SELECT id FROM tool_news WHERE user_id = 1 AND hermes_job_id = ? AND publish_date = ?',
+      [job_id, date]
+    );
+    if (existing.length > 0) {
+      return res.json({ imported: false, skipped: true, id: existing[0].id, message: '已存在' });
+    }
+
+    // Use user_id = 1 (default admin user) for sync
+    const summary = generateSummary(content);
+    const [result] = await pool.execute(
+      `INSERT INTO tool_news (user_id, title, content, summary, publish_date, category, source, hermes_job_id, raw_content)
+       VALUES (1, ?, ?, ?, ?, ?, 'hermes', ?, ?)`,
+      [title, content, summary, date, category || '综合', job_id, raw_content || null]
+    );
+
+    if (tags && tags.length > 0) {
+      await setNewsTags(result.insertId, 1, tags);
+    }
+
+    res.json({ imported: true, id: result.insertId });
+  } catch (err) {
+    console.error('[News Sync] Error:', err);
+    res.status(500).json({ error: '同步新闻失败', detail: err.message });
+  }
+});
+
 module.exports = router;
+module.exports.newsSyncHandler = newsSyncRouter;
