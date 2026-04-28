@@ -101,14 +101,15 @@
             @touchmove.prevent="onTouchMove"
             @touchend.prevent="onMouseUp"
           ></canvas>
-        <!-- Text input (positioned relative to canvas-area) -->
+        </div>
+        <!-- Text input (positioned relative to canvas-area, outside canvas-container to avoid transform) -->
         <input v-if="showTextInput" ref="textInputRef"
           class="text-input-overlay"
-          :style="{left:textScreenX+'px',top:textScreenY+'px',fontSize:(fontSize*zoom)+'px',color:strokeColor}"
+          :style="{left:textScreenX+'px',top:textScreenY+'px',fontSize:(fontSize*zoom)+'px',color:strokeColor,minWidth:'120px'}"
           @keydown.enter="commitText" @keydown.escape="showTextInput=false" @blur="commitText"
+          @mousedown.stop @click.stop
           placeholder="输入文字..." autofocus
         />
-        </div>
         <!-- Zoom controls -->
         <div class="zoom-controls">
           <button class="zc" @click="zoomOut" title="缩小">−</button>
@@ -189,6 +190,19 @@
         <div class="modal-actions">
           <button class="btn" @click="showNewDialog=false">取消</button>
           <button class="btn btn-primary" @click="createNewCanvas">确认</button>
+        </div>
+      </div>
+    </div>
+    <!-- Save dialog (rename before save) -->
+    <div v-if="showSaveDialog" class="modal-overlay" @click.self="showSaveDialog=false">
+      <div class="modal-box">
+        <div class="modal-title">保存画布</div>
+        <div class="modal-body">
+          <label>文件名：<input v-model="newName" class="modal-input" style="width:200px" placeholder="未命名画布"></label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" @click="showSaveDialog=false">取消</button>
+          <button class="btn btn-primary" @click="confirmSave">保存</button>
         </div>
       </div>
     </div>
@@ -285,6 +299,7 @@ const MAX_RECORDS = 30
 
 // Dialogs
 const showNewDialog = ref(false)
+const showSaveDialog = ref(false)
 const newW = ref(1200)
 const newH = ref(800)
 const newName = ref('未命名画布')
@@ -876,7 +891,14 @@ function onMouseDown(e) {
     textScreenY.value = e.clientY - wr.top
     textCanvasX = x; textCanvasY = y
     showTextInput.value = true
-    nextTick(() => textInputRef.value?.focus())
+    nextTick(() => {
+      textInputRef.value?.focus()
+      textInputRef.value?.select()
+    })
+    nextTick(() => {
+      textInputRef.value?.focus()
+      textInputRef.value?.select()
+    })
     return
   }
 
@@ -1114,10 +1136,10 @@ function onTouchMove(e) { if (e.touches.length === 1) onMouseMove({ clientX: e.t
 
 // ===== TEXT =====
 function commitText() {
+  if (!showTextInput.value) return
   const text = textInputRef.value?.value?.trim()
   if (!text) { showTextInput.value = false; return }
   elements.value.push({ type: 'text', x: textCanvasX, y: textCanvasY, text, fontSize: fontSize.value, color: strokeColor.value })
-  if (textInputRef.value) textInputRef.value.value = ''
   showTextInput.value = false; saveState(); redraw()
 }
 
@@ -1160,7 +1182,15 @@ function onImportImage(e) {
 }
 
 function saveToHistory() {
-  saveCurrentToServer()
+  // Open rename dialog before saving
+  newName.value = currentFileName.value || '未命名画布'
+  showSaveDialog.value = true
+}
+
+async function confirmSave() {
+  showSaveDialog.value = false
+  currentFileName.value = newName.value.trim() || '未命名画布'
+  await saveCurrentToServer()
   savePointIdx = historyIdx.value
 }
 
@@ -1360,7 +1390,7 @@ function createNewCanvas() {
 
 // ===== KEYBOARD =====
 function onKeyDown(e) {
-  if (showTextInput.value || showNewDialog.value) return
+  if (showTextInput.value || showNewDialog.value || showSaveDialog.value) return
   if (e.key === ' ' && !spaceDown.value) { e.preventDefault(); spaceDown.value = true; canvasRef.value && (canvasRef.value.style.cursor = 'grab'); return }
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo() }

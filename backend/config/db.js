@@ -1,11 +1,11 @@
 const mysql = require('mysql2/promise');
 
 const pool = mysql.createPool({
-  host: '127.0.0.1',
-  port: 3306,
-  user: 'pa',
-  password: 'pa_pass_2026',
-  database: 'personal_assistant',
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: process.env.DB_PORT || 3306,
+  user: process.env.DB_USER || 'pa',
+  password: process.env.DB_PASSWORD || 'your_password_here',
+  database: process.env.DB_NAME || 'personal_assistant',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

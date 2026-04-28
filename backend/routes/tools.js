@@ -562,16 +562,15 @@ function generateSummary(content, maxLen = 200) {
   return text.length > maxLen ? text.substring(0, maxLen) + '...' : text;
 }
 
-// GET /api/tools/news - List news with filters
+// GET /api/tools/news - List news with filters (shared across all users)
 router.get('/news', async (req, res) => {
   try {
-    const userId = req.user.id;
     const { month, category, tag, q, page = 1, pageSize = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
     const limit = parseInt(pageSize);
 
-    let whereClauses = ['user_id = ?'];
-    let params = [userId];
+    let whereClauses = ['1=1'];  // News is shared, no user_id filter
+    let params = [];
 
     if (month) {
       whereClauses.push('DATE_FORMAT(publish_date, "%Y-%m") = ?');
@@ -585,9 +584,9 @@ router.get('/news', async (req, res) => {
       whereClauses.push(`id IN (
         SELECT news_id FROM tool_news_tag_map m
         JOIN tool_news_tags t ON m.tag_id = t.id
-        WHERE t.user_id = ? AND t.name = ?
+        WHERE t.name = ?
       )`);
-      params.push(userId, tag);
+      params.push(tag);
     }
     if (q) {
       whereClauses.push('MATCH(title, content) AGAINST(? IN NATURAL LANGUAGE MODE)');
@@ -607,8 +606,8 @@ router.get('/news', async (req, res) => {
     // Get items
     const [rows] = await pool.execute(
       `SELECT id, title, summary, content, publish_date, category, source, view_count, created_at
-       FROM tool_news WHERE ${whereSQL} ORDER BY publish_date DESC, created_at DESC LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+       FROM tool_news WHERE ${whereSQL} ORDER BY publish_date DESC, created_at DESC LIMIT ${offset}, ${limit}`,
+      params
     );
 
     // Get tags for each item
@@ -618,27 +617,23 @@ router.get('/news', async (req, res) => {
       items.push({ ...row, tags });
     }
 
-    // Get category stats
+    // Get category stats (global)
     const [catRows] = await pool.execute(
-      `SELECT category, COUNT(*) as count FROM tool_news WHERE user_id = ? GROUP BY category ORDER BY count DESC`,
-      [userId]
+      `SELECT category, COUNT(*) as count FROM tool_news GROUP BY category ORDER BY count DESC`
     );
 
-    // Get tags list
+    // Get tags list (global)
     const [tagRows] = await pool.execute(
       `SELECT t.id, t.name, t.color, COUNT(m.news_id) as count
        FROM tool_news_tags t
        LEFT JOIN tool_news_tag_map m ON t.id = m.tag_id
-       WHERE t.user_id = ?
-       GROUP BY t.id ORDER BY count DESC LIMIT 20`,
-      [userId]
+       GROUP BY t.id ORDER BY count DESC LIMIT 20`
     );
 
-    // Get available months
+    // Get available months (global)
     const [monthRows] = await pool.execute(
       `SELECT DISTINCT DATE_FORMAT(publish_date, "%Y-%m") as month
-       FROM tool_news WHERE user_id = ? ORDER BY month DESC`,
-      [userId]
+       FROM tool_news ORDER BY month DESC`
     );
 
     res.json({
@@ -657,13 +652,12 @@ router.get('/news', async (req, res) => {
   }
 });
 
-// GET /api/tools/news/months - Get available months
+// GET /api/tools/news/months - Get available months (global)
 router.get('/news/months', async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT DISTINCT DATE_FORMAT(publish_date, "%Y-%m") as month
-       FROM tool_news WHERE user_id = ? ORDER BY month DESC`,
-      [req.user.id]
+       FROM tool_news ORDER BY month DESC`
     );
     res.json({ months: rows.map(r => r.month) });
   } catch (err) {
@@ -672,12 +666,12 @@ router.get('/news/months', async (req, res) => {
   }
 });
 
-// GET /api/tools/news/:id - Get single news detail
+// GET /api/tools/news/:id - Get single news detail (global, no user_id filter)
 router.get('/news/:id', async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      `SELECT * FROM tool_news WHERE id = ? AND user_id = ?`,
-      [req.params.id, req.user.id]
+      `SELECT * FROM tool_news WHERE id = ?`,
+      [req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: '新闻不存在' });
 
@@ -840,23 +834,23 @@ router.post('/news/sync', async (req, res) => {
 
     // Check if already exists (idempotent)
     const [existing] = await pool.execute(
-      'SELECT id FROM tool_news WHERE user_id = 1 AND hermes_job_id = ? AND publish_date = ?',
+      'SELECT id FROM tool_news WHERE user_id = 7 AND hermes_job_id = ? AND publish_date = ?',
       [job_id, date]
     );
     if (existing.length > 0) {
       return res.json({ imported: false, skipped: true, id: existing[0].id, message: '已存在' });
     }
 
-    // Use user_id = 1 (default admin user) for sync
+    // Use user_id = 7 (zrc - main admin user) for sync
     const summary = generateSummary(content);
     const [result] = await pool.execute(
       `INSERT INTO tool_news (user_id, title, content, summary, publish_date, category, source, hermes_job_id, raw_content)
-       VALUES (1, ?, ?, ?, ?, ?, 'hermes', ?, ?)`,
+       VALUES (7, ?, ?, ?, ?, ?, 'hermes', ?, ?)`,
       [title, content, summary, date, category || '综合', job_id, raw_content || null]
     );
 
     if (tags && tags.length > 0) {
-      await setNewsTags(result.insertId, 1, tags);
+      await setNewsTags(result.insertId, 7, tags);
     }
 
     res.json({ imported: true, id: result.insertId });
@@ -866,13 +860,12 @@ router.post('/news/sync', async (req, res) => {
   }
 });
 
-// GET /api/tools/news/categories - Get category list with icons
+// GET /api/tools/news/categories - Get category list with icons (global)
 router.get('/news/categories', async (req, res) => {
   try {
-    // Get user's category stats
+    // Get global category stats
     const [stats] = await pool.execute(
-      `SELECT category, COUNT(*) as count FROM tool_news WHERE user_id = ? GROUP BY category`,
-      [req.user.id]
+      `SELECT category, COUNT(*) as count FROM tool_news GROUP BY category`
     );
     const statsMap = {};
     for (const s of stats) {
@@ -909,23 +902,23 @@ newsSyncRouter.post('/news/sync', async (req, res) => {
 
     // Check if already exists (idempotent)
     const [existing] = await pool.execute(
-      'SELECT id FROM tool_news WHERE user_id = 1 AND hermes_job_id = ? AND publish_date = ?',
+      'SELECT id FROM tool_news WHERE user_id = 7 AND hermes_job_id = ? AND publish_date = ?',
       [job_id, date]
     );
     if (existing.length > 0) {
       return res.json({ imported: false, skipped: true, id: existing[0].id, message: '已存在' });
     }
 
-    // Use user_id = 1 (default admin user) for sync
+    // Use user_id = 7 (zrc - main admin user) for sync
     const summary = generateSummary(content);
     const [result] = await pool.execute(
       `INSERT INTO tool_news (user_id, title, content, summary, publish_date, category, source, hermes_job_id, raw_content)
-       VALUES (1, ?, ?, ?, ?, ?, 'hermes', ?, ?)`,
+       VALUES (7, ?, ?, ?, ?, ?, 'hermes', ?, ?)`,
       [title, content, summary, date, category || '综合', job_id, raw_content || null]
     );
 
     if (tags && tags.length > 0) {
-      await setNewsTags(result.insertId, 1, tags);
+      await setNewsTags(result.insertId, 7, tags);
     }
 
     res.json({ imported: true, id: result.insertId });

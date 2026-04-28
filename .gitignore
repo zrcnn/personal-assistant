@@ -4,3 +4,11 @@ mysql-data/
 backend/public/assets/
 *.log
 .env
+.env.local
+.env.production
+*.bak
+coverage/
+dist/
+build/
+.DS_Store
+Thumbs.db

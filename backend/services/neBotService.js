@@ -38,8 +38,7 @@ class NEBotService {
    * 获取群聊上下文
    */
   async getGroupContext(groupId, limit = 10) {
-    // 使用 query 而不是 execute，避免 LIMIT 参数的问题
-    const [messages] = await pool.query(
+    const [messages] = await pool.execute(
       `SELECT gm.id, gm.sender_id, gm.content, u.username AS sender_name, gm.created_at
        FROM group_messages gm
        JOIN users u ON gm.sender_id = u.id

@@ -111,6 +111,12 @@ router.get('/records', authMiddleware, async (req, res) => {
       `SELECT * FROM body_records WHERE user_id = ? ${dateFilter} ORDER BY record_date ASC`,
       [req.user.id]
     );
+    // Format record_date as YYYY-MM-DD string to avoid timezone issues
+    rows.forEach(r => {
+      if (r.record_date instanceof Date) {
+        r.record_date = r.record_date.toISOString().slice(0, 10);
+      }
+    });
     res.json(rows);
   } catch (err) {
     console.error('[Fitness] GET records error:', err);
@@ -164,7 +170,11 @@ router.post('/records', authMiddleware, async (req, res) => {
       'SELECT * FROM body_records WHERE id = ?',
       [result.insertId]
     );
-    res.json(rows[0]);
+    const record = rows[0];
+    if (record && record.record_date instanceof Date) {
+      record.record_date = record.record_date.toISOString().slice(0, 10);
+    }
+    res.json(record);
   } catch (err) {
     console.error('[Fitness] POST records error:', err);
     res.status(500).json({ error: '创建记录失败' });
@@ -220,7 +230,11 @@ router.put('/records/:id', authMiddleware, async (req, res) => {
     );
 
     const [rows] = await pool.execute('SELECT * FROM body_records WHERE id = ?', [id]);
-    res.json(rows[0]);
+    const record = rows[0];
+    if (record && record.record_date instanceof Date) {
+      record.record_date = record.record_date.toISOString().slice(0, 10);
+    }
+    res.json(record);
   } catch (err) {
     console.error('[Fitness] PUT records error:', err);
     res.status(500).json({ error: '更新记录失败' });

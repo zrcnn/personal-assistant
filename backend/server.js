@@ -27,8 +27,8 @@ const messageWs = require('./services/messageWs');
 const { authMiddleware } = require('./middleware/auth');
 
 const app = express();
-const PORT = 8090;
-const JWT_SECRET = 'pa_jwt_secret_2026_ne';
+const PORT = process.env.PORT || 8090;
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_change_in_production';
 
 // Multer config for file uploads
 const uploadDir = path.join(__dirname, '..', 'uploads');
@@ -94,9 +94,10 @@ app.use('/api/messages', authMiddleware, messagesRoutes);
 app.use('/api/group-chats', authMiddleware, groupChatRoutes);
 app.use('/api/file', authMiddleware, fileManagerRoutes);
 
-// Admin API (only zrc)
+// Admin API (configurable admin username)
 app.use('/api/admin', authMiddleware, (req, res, next) => {
-  if (req.user && req.user.username === 'zrc') next();
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  if (req.user && req.user.username === adminUsername) next();
   else res.status(403).json({ error: '无权限' });
 });
 app.post('/api/admin/restart-gateway', async (req, res) => {
