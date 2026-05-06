@@ -134,3 +134,52 @@ export const userApiKeysAPI = {
     return api.get(`/api/user-api-keys/${id}/decrypt`)
   }
 }
+
+export const testCaseAPI = {
+  // 产品管理
+  getProducts() {
+    return api.get('/api/test-case/products')
+  },
+  createProduct(data) {
+    return api.post('/api/test-case/products', data)
+  },
+  updateProduct(id, data) {
+    return api.put(`/api/test-case/products/${id}`, data)
+  },
+  deleteProduct(id) {
+    return api.delete(`/api/test-case/products/${id}`)
+  },
+
+  // 需求管理
+  getRequirements(productId) {
+    return api.get('/api/test-case/requirements', { params: productId ? { product_id: productId } : {} })
+  },
+  createRequirement(data) {
+    return api.post('/api/test-case/requirements', data)
+  },
+  updateRequirement(id, data) {
+    return api.put(`/api/test-case/requirements/${id}`, data)
+  },
+  deleteRequirement(id) {
+    return api.delete(`/api/test-case/requirements/${id}`)
+  },
+
+  // 测试用例管理
+  getTestCases(params) {
+    return api.get('/api/test-case/test-cases', { params })
+  },
+  createTestCase(data) {
+    return api.post('/api/test-case/test-cases', data)
+  },
+  updateTestCase(id, data) {
+    return api.put(`/api/test-case/test-cases/${id}`, data)
+  },
+  deleteTestCase(id) {
+    return api.delete(`/api/test-case/test-cases/${id}`)
+  },
+
+  // AI 生成
+  generateTestCases(data) {
+    return api.post('/api/test-case/generate', data)
+  }
+}

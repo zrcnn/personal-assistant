@@ -82,48 +82,6 @@
         </div>
       </div>
 
-      <!-- GPU -->
-      <div class="info-card gpu-card" v-if="gpu !== null">
-        <h3>🎮 显卡</h3>
-        <div class="gpu-info-row">
-          <span class="label">型号</span>
-          <span class="value">{{ gpu.name }}</span>
-        </div>
-        <div class="gpu-info-row">
-          <span class="label">驱动版本</span>
-          <span class="value">{{ gpu.driverVersion }}</span>
-        </div>
-        <div class="gpu-info-row" v-if="gpu.cudaVersion !== 'N/A'">
-          <span class="label">CUDA 版本</span>
-          <span class="value">{{ gpu.cudaVersion }}</span>
-        </div>
-        <div style="margin-top: 14px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-            <span style="font-size:13px;color:var(--text-muted);">显存</span>
-            <span style="font-size:13px;color:var(--text-secondary);">{{ gpu.memoryUsed }} / {{ gpu.memoryTotal }} MiB</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill gpu-mem" :style="{ width: gpu.memoryUsedPercent + '%' }"></div>
-          </div>
-        </div>
-        <div style="margin-top: 12px;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-            <span style="font-size:13px;color:var(--text-muted);">GPU 利用率</span>
-            <span style="font-size:13px;color:var(--text-secondary);">{{ gpu.utilization }}%</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill gpu-util" :style="{ width: gpu.utilization + '%' }"></div>
-          </div>
-        </div>
-        <div class="gpu-temp-row">
-          <span>温度</span>
-          <span class="temp-value" :class="getTempClass(gpu.temperature)">{{ gpu.temperature }}°C</span>
-        </div>
-      </div>
-      <div class="info-card" v-else-if="gpu === null && gpuLoaded" style="text-align:center;color:var(--text-muted);padding:24px;">
-        未检测到独立显卡
-      </div>
-
       <!-- Temperature -->
       <div class="info-card" v-if="info.temperature.sensors.length > 0">
         <h3>🌡️ 温度</h3>
@@ -186,10 +144,69 @@
       <!-- Network -->
       <div class="info-card">
         <h3>🌐 网络</h3>
-        <div v-for="iface in info.network" :key="iface.name" class="net-item">
-          <span class="net-name">{{ iface.name }}</span>
-          <span class="net-stat">↓ {{ iface.rx }}</span>
-          <span class="net-stat">↑ {{ iface.tx }}</span>
+        <!-- Tabs -->
+        <div class="net-tabs">
+          <button 
+            class="net-tab" 
+            :class="{ active: trafficPeriod === 'daily' }" 
+            @click="trafficPeriod = 'daily'; loadTraffic()"
+          >
+            今日
+          </button>
+          <button 
+            class="net-tab" 
+            :class="{ active: trafficPeriod === 'monthly' }" 
+            @click="trafficPeriod = 'monthly'; loadTraffic()"
+          >
+            本月
+          </button>
+        </div>
+        <!-- Current iface info -->
+        <div v-if="info.network && info.network.length > 0" class="net-current">
+          <div v-for="iface in info.network" :key="iface.name" class="net-item">
+            <span class="net-name">{{ iface.name }}</span>
+            <span class="net-stat">↓ {{ iface.rx }}</span>
+            <span class="net-stat">↑ {{ iface.tx }}</span>
+          </div>
+        </div>
+        <!-- Traffic stats -->
+        <div v-if="trafficData.interfaces.length > 0" class="traffic-stats">
+          <div v-for="iface in trafficData.interfaces" :key="iface.iface" class="traffic-section">
+            <div class="traffic-section-title">
+              <span>{{ iface.iface }}</span>
+              <span class="traffic-total">总计 {{ formatBytes(iface.stats.reduce((s, d) => s + d.total, 0)) }}</span>
+            </div>
+            <div class="traffic-chart">
+              <div 
+                v-for="(stat, idx) in iface.stats.slice(-12)" 
+                :key="stat.period + idx" 
+                class="traffic-bar-group"
+                :title="`${stat.period}\n↓ ${formatBytes(stat.rx)}\n↑ ${formatBytes(stat.tx)}`"
+              >
+                <div class="traffic-bar-inner">
+                  <div 
+                    class="traffic-bar rx" 
+                    :style="{ height: getBarHeight(stat.rx, maxTraffic) + '%' }"
+                  ></div>
+                  <div 
+                    class="traffic-bar tx" 
+                    :style="{ height: getBarHeight(stat.tx, maxTraffic) + '%' }"
+                  ></div>
+                </div>
+                <span class="traffic-bar-label">{{ getBarLabel(stat.period, trafficPeriod) }}</span>
+              </div>
+            </div>
+            <div class="traffic-legend">
+              <span><span class="legend-rx"></span> 下载</span>
+              <span><span class="legend-tx"></span> 上传</span>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="trafficLoading" class="traffic-loading">
+          加载中...
+        </div>
+        <div v-else class="traffic-empty">
+          暂无流量统计数据
         </div>
       </div>
     </template>
@@ -197,13 +214,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import api from '../api/index'
 
 const info = ref(null)
-const gpu = ref(undefined) // undefined=loading, null=no gpu, object=gpu data
-const gpuLoaded = ref(false)
 const isLive = ref(true)
+const trafficPeriod = ref('daily')
+const trafficData = ref({ period: 'daily', interfaces: [] })
+const trafficLoading = ref(false)
 let timer = null
 
 async function loadInfo() {
@@ -215,15 +233,15 @@ async function loadInfo() {
   }
 }
 
-async function loadGpu() {
+async function loadTraffic() {
+  trafficLoading.value = true
   try {
-    const res = await api.get('/api/system/gpu')
-    gpu.value = res.data.gpu
-    gpuLoaded.value = true
+    const res = await api.get(`/api/system/traffic?period=${trafficPeriod.value}`)
+    trafficData.value = res.data
   } catch {
-    gpu.value = null
-    gpuLoaded.value = true
+    trafficData.value = { period: trafficPeriod.value, interfaces: [] }
   }
+  trafficLoading.value = false
 }
 
 function getTempClass(temp) {
@@ -238,13 +256,53 @@ function getBatteryClass(pct) {
   return 'normal'
 }
 
+function getDiskClass(percent) {
+  if (percent >= 90) return 'critical'
+  if (percent >= 75) return 'warning'
+  return 'normal'
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  if (bytes < 1024 * 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+  return (bytes / (1024 * 1024 * 1024 * 1024)).toFixed(2) + ' TB'
+}
+
+const maxTraffic = computed(() => {
+  let max = 0
+  for (const iface of trafficData.value.interfaces) {
+    for (const stat of iface.stats) {
+      max = Math.max(max, stat.rx, stat.tx)
+    }
+  }
+  return max || 1
+})
+
+function getBarHeight(value, maxVal) {
+  if (maxVal <= 0) return 0
+  return Math.max(2, (value / maxVal) * 100)
+}
+
+function getBarLabel(period, periodType) {
+  if (periodType === 'daily') {
+    // Extract hour from "YYYY-MM-DD HH:00"
+    const parts = period.split(' ')
+    return parts[1] || ''
+  } else {
+    // Extract MM-DD from "YYYY-MM-DD"
+    const parts = period.split('-')
+    return `${parts[1]}/${parts[2]}`
+  }
+}
+
 const TEMP_NAME_MAP = {
   'acpitz': '主板',
   'pch_skylake': '芯片组',
   'x86_pkg_temp': 'CPU 封装',
   'coretemp': 'CPU 核心',
   'cpu_thermal': 'CPU',
-  'gpu_thermal': 'GPU',
   'battery': '电池',
   'iwlwifi': '无线网卡',
   'soc_thermal': 'SoC'
@@ -254,17 +312,11 @@ function getTempName(name) {
   return TEMP_NAME_MAP[name] || name
 }
 
-function getDiskClass(percent) {
-  if (percent >= 90) return 'critical'
-  if (percent >= 75) return 'warning'
-  return 'normal'
-}
-
 onMounted(() => {
   loadInfo()
-  loadGpu()
+  loadTraffic()
   timer = setInterval(() => {
-    if (isLive.value) { loadInfo(); loadGpu() }
+    if (isLive.value) { loadInfo() }
   }, 3000)
 })
 
@@ -288,24 +340,19 @@ onUnmounted(() => {
 }
 
 .back-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-secondary);
+  background: var(--bg-card);
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: 14px;
   cursor: pointer;
   transition: all var(--transition);
-  flex-shrink: 0;
 }
 
 .back-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .page-header h2 {
@@ -434,8 +481,6 @@ onUnmounted(() => {
 .progress-fill.cpu { background: linear-gradient(90deg, #3498db, #2980b9); }
 .progress-fill.memory { background: linear-gradient(90deg, #9b59b6, #8e44ad); }
 .progress-fill.disk { background: linear-gradient(90deg, #e67e22, #d35400); }
-.progress-fill.gpu-mem { background: linear-gradient(90deg, #00b894, #00cec9); }
-.progress-fill.gpu-util { background: linear-gradient(90deg, #6c5ce7, #a29bfe); }
 
 .progress-text {
   font-size: 16px;
@@ -619,26 +664,7 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-/* Network */
-.gpu-info-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-}
-.gpu-info-row .label { color: var(--text-muted); }
-.gpu-info-row .value { color: var(--text-primary); font-weight: 500; }
-.gpu-temp-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 12px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-/* Network */
+/* Network tabs */
 .net-item {
   display: flex;
   align-items: center;
@@ -662,6 +688,145 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   font-family: 'Fira Code', monospace;
+}
+
+.net-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.net-tab {
+  padding: 6px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.net-tab:hover {
+  color: var(--text-primary);
+}
+
+.net-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.net-current {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Traffic stats */
+.traffic-stats {
+  margin-top: 4px;
+}
+
+.traffic-section {
+  margin-bottom: 16px;
+}
+
+.traffic-section:last-child {
+  margin-bottom: 0;
+}
+
+.traffic-section-title {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.traffic-section-title span:first-child {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.traffic-total {
+  color: var(--text-muted);
+  font-family: 'Fira Code', monospace;
+}
+
+.traffic-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 80px;
+  padding: 4px 0;
+}
+
+.traffic-bar-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.traffic-bar-inner {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 60px;
+  width: 100%;
+  justify-content: center;
+}
+
+.traffic-bar {
+  width: 6px;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s ease;
+}
+
+.traffic-bar.rx {
+  background: linear-gradient(180deg, #3498db, #2980b9);
+}
+
+.traffic-bar.tx {
+  background: linear-gradient(180deg, #9b59b6, #8e44ad);
+}
+
+.traffic-bar-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'Fira Code', monospace;
+}
+
+.traffic-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.legend-rx,
+.legend-tx {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.legend-rx { background: #3498db; }
+.legend-tx { background: #9b59b6; }
+
+.traffic-loading,
+.traffic-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 20px;
+  font-size: 13px;
 }
 
 /* Responsive */

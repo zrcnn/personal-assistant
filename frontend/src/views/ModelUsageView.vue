@@ -4,7 +4,18 @@
       <button class="back-btn" @click="$router.back()" title="返回">←</button>
       <h2>📊 模型用量分析</h2>
       <p class="page-desc" v-if="stats">共 {{ stats.totalSessions }} 个会话 · {{ stats.totalRequests }} 次模型调用</p>
-      <button class="refresh-btn" @click="fetchData" :disabled="loading">
+      <div class="group-toggle">
+        <button
+          v-for="opt in groupOptions"
+          :key="opt.value"
+          class="group-btn"
+          :class="{ active: currentGroup === opt.value }"
+          @click="handleGroupChange(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+      <button class="refresh-btn" @click="handleRefresh" :disabled="loading">
         {{ loading ? '加载中...' : '刷新' }}
       </button>
     </div>
@@ -73,22 +84,20 @@
         </div>
       </div>
 
-      <!-- Pie chart (CSS) -->
-      <div class="chart-section" v-if="totalForPie > 0">
-        <h3>占比分布</h3>
-        <div class="pie-container">
-          <div
-            class="pie"
-            :style="pieStyle"
-            :title="pieTooltip"
-          ></div>
-          <div class="pie-legend">
-            <div v-for="cat in sortedCategories" :key="'legend-' + cat.key" class="legend-item">
-              <span class="legend-dot" :style="{ background: cat.color }"></span>
-              <span class="legend-text">{{ cat.name }}</span>
-              <span class="legend-pct">{{ cat.percentage }}%</span>
-            </div>
+      <!-- Time trend line chart -->
+      <div class="chart-section" v-if="timeSeries && timeSeries.length > 0">
+        <div class="chart-header">
+          <h3>趋势（{{ groupLabels[currentGroup] }}）</h3>
+          <div class="line-legend">
+            <label v-for="dim in lineDimensions" :key="dim.key" class="line-legend-item">
+              <input type="checkbox" v-model="lineLegend[dim.key]" />
+              <span class="line-legend-dot" :style="{ background: dim.color }"></span>
+              <span>{{ dim.label }}</span>
+            </label>
           </div>
+        </div>
+        <div class="line-chart-body">
+          <canvas ref="chartCanvas"></canvas>
         </div>
       </div>
     </div>
@@ -96,10 +105,161 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 
 const stats = ref(null)
 const loading = ref(false)
+const currentGroup = ref('day')
+
+const groupOptions = [
+  { label: '日', value: 'day' },
+  { label: '周', value: 'week' },
+  { label: '月', value: 'month' },
+  { label: '年', value: 'year' }
+]
+
+// 从 localStorage 恢复上次的分组选择
+const savedGroup = localStorage.getItem('modelUsageGroup')
+if (savedGroup && groupOptions.some(o => o.value === savedGroup)) {
+  currentGroup.value = savedGroup
+}
+
+const timeSeries = computed(() => stats.value?.timeSeries || [])
+
+const groupLabels = {
+  day: '按日',
+  week: '按周',
+  month: '按月',
+  year: '按年'
+}
+
+const lineDimensions = [
+  { key: 'requests', label: '调用次数', color: '#6366f1' },
+  { key: 'inputTokens', label: '输入 token', color: '#22c55e' },
+  { key: 'outputTokens', label: '输出 token', color: '#f59e0b' }
+]
+
+const lineLegend = ref({ requests: true, inputTokens: true, outputTokens: true })
+const chartCanvas = ref(null)
+let chartInstance = null
+
+// Chart.js 动态加载
+let chartModule = null
+async function loadChart() {
+  if (chartModule) return chartModule
+  const { Chart, registerables } = await import('chart.js')
+  Chart.register(...registerables)
+  chartModule = { Chart }
+  return chartModule
+}
+
+function formatToken(num) {
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M'
+  if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k'
+  return String(num)
+}
+
+const displayTimeSeries = computed(() => {
+  // 只显示最近 5 个数据点
+  return timeSeries.value.slice(-5)
+})
+
+const displayXLabels = computed(() => {
+  const all = timeSeries.value.map(item => item.label || item.period || '')
+  // 只显示最近 5 个
+  return all.slice(-5)
+})
+
+async function renderChart() {
+  if (!chartCanvas.value) return
+
+  if (chartInstance) {
+    chartInstance.destroy()
+    chartInstance = null
+  }
+
+  const data = displayTimeSeries.value
+  if (data.length === 0) return
+
+  const { Chart } = await loadChart()
+
+  const labels = data.map(item => item.label || item.period || '')
+
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light'
+  const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+  const textColor = isDark ? '#aaa' : '#666'
+
+  function createGradient(color) {
+    const ctx = chartCanvas.value.getContext('2d')
+    const gradient = ctx.createLinearGradient(0, 0, 0, chartCanvas.value.clientHeight || 300)
+    gradient.addColorStop(0, color + '40')
+    gradient.addColorStop(1, color + '05')
+    return gradient
+  }
+
+  const activeCount = Object.values(lineLegend.value).filter(v => v).length
+  const datasets = lineDimensions
+    .filter(dim => lineLegend.value[dim.key])
+    .map(dim => ({
+      label: dim.label,
+      data: data.map(item => item[dim.key] || 0),
+      borderColor: dim.color,
+      backgroundColor: createGradient(dim.color),
+      borderWidth: 2,
+      pointRadius: 4,
+      pointBackgroundColor: dim.color,
+      pointBorderColor: dim.color,
+      pointHoverRadius: 6,
+      tension: 0.4,
+      fill: activeCount > 1 // 多于一条线时填充，只有一条时不填充
+    }))
+
+  chartInstance = new Chart(chartCanvas.value, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          backgroundColor: isDark ? '#333' : '#fff',
+          titleColor: isDark ? '#fff' : '#333',
+          bodyColor: isDark ? '#ccc' : '#666',
+          borderColor: isDark ? '#555' : '#ddd',
+          borderWidth: 1,
+          callbacks: {
+            label: function(context) {
+              return context.dataset.label + ': ' + formatToken(context.parsed.y)
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: gridColor },
+          ticks: { color: textColor, autoSkip: false }
+        },
+        y: {
+          beginAtZero: false,
+          grid: { color: gridColor },
+          ticks: {
+            color: textColor,
+            callback: function(value) {
+              return formatToken(value)
+            }
+          }
+        }
+      }
+    }
+  })
+}
 
 const sortedCategories = computed(() => {
   if (!stats.value?.categories) return []
@@ -140,14 +300,15 @@ function sortedModels(models) {
   return Object.values(models).sort((a, b) => b.requests - a.requests)
 }
 
-async function fetchData() {
+async function fetchData(group) {
   loading.value = true
   try {
-    const resp = await fetch('/api/model-usage', {
+    const resp = await fetch(`/api/model-usage?group=${group}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     })
     if (!resp.ok) throw new Error('请求失败')
     stats.value = await resp.json()
+    nextTick(() => renderChart())
   } catch (err) {
     console.error('获取模型用量失败:', err)
   } finally {
@@ -155,7 +316,32 @@ async function fetchData() {
   }
 }
 
-onMounted(fetchData)
+function handleGroupChange(group) {
+  currentGroup.value = group
+  localStorage.setItem('modelUsageGroup', group)
+  fetchData(group)
+}
+
+function handleRefresh() {
+  fetchData(currentGroup.value)
+}
+
+// Watch legend changes
+watch(lineLegend, () => {
+  renderChart()
+}, { deep: true })
+
+// Watch theme changes for chart
+const observer = new MutationObserver(() => {
+  if (displayTimeSeries.value.length > 0) renderChart()
+})
+
+onMounted(async () => {
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  await fetchData(currentGroup.value)
+  await nextTick()
+  renderChart()
+})
 </script>
 
 <style scoped>
@@ -207,6 +393,37 @@ onMounted(fetchData)
   flex: 1;
 }
 
+.group-toggle {
+  display: flex;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.group-btn {
+  padding: 6px 14px;
+  border: none;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-right: 1px solid var(--border);
+}
+
+.group-btn:last-child {
+  border-right: none;
+}
+
+.group-btn:hover {
+  background: var(--bg-hover);
+}
+
+.group-btn.active {
+  background: var(--accent, var(--text-primary));
+  color: #fff;
+}
+
 .refresh-btn {
   padding: 6px 16px;
   border-radius: var(--radius-sm, 6px);
@@ -247,6 +464,58 @@ onMounted(fetchData)
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chart-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.line-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.line-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.line-legend-item input[type="checkbox"] {
+  display: none;
+}
+
+.line-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+  border: 1px solid currentColor;
+}
+
+.line-legend-item:not(:has(input:checked)) .line-legend-dot {
+  background: transparent;
+  opacity: 0.4;
+}
+
+.line-chart-body {
+  position: relative;
+  height: 300px;
 }
 
 /* Bar chart */

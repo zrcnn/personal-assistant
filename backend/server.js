@@ -23,6 +23,7 @@ const ocrRoutes = require('./routes/ocr');
 const profileRoutes = require('./routes/profile');
 const groupChatRoutes = require('./routes/groupChat');
 const fileManagerRoutes = require('./routes/fileManager');
+const testCaseRoutes = require('./routes/testCase');
 const messageWs = require('./services/messageWs');
 const { authMiddleware } = require('./middleware/auth');
 
@@ -76,6 +77,63 @@ app.use('/api/conversations', chatRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/stock-proxy', stockProxyRoutes);
+
+// Proxy /stock-api/* to Python stock service on port 8091
+// Used by StockPanel.vue for search, realtime, analysis, suggest endpoints
+const stockApiRouter = require('express').Router();
+stockApiRouter.all('/*', async (req, res) => {
+  const path = req.params[0];
+  const targetUrl = `http://127.0.0.1:8091/api/${path}`;
+
+  try {
+    const http = require('http');
+    const url = new URL(targetUrl);
+
+    // Copy query params
+    if (req.query) {
+      Object.entries(req.query).forEach(([key, value]) => {
+        url.searchParams.set(key, value);
+      });
+    }
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method: req.method,
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 15000,
+    };
+
+    const proxyReq = http.request(options, (proxyRes) => {
+      let data = '';
+      proxyRes.on('data', (chunk) => { data += chunk; });
+      proxyRes.on('end', () => {
+        res.status(proxyRes.statusCode).set(proxyRes.headers).send(data);
+      });
+    });
+
+    proxyReq.on('error', (err) => {
+      console.error('[StockApi] Error:', err.message);
+      res.status(502).json({ error: '股票服务不可用' });
+    });
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy();
+      res.status(504).json({ error: '股票服务超时' });
+    });
+
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
+      proxyReq.write(JSON.stringify(req.body));
+    }
+    proxyReq.end();
+  } catch (err) {
+    console.error('[StockApi] Error:', err.message);
+    res.status(500).json({ error: '代理请求失败' });
+  }
+});
+
+app.use('/stock-api', stockApiRouter);
 app.use('/api/todos', todoRoutes);
 app.use('/api/fitness', fitnessRoutes);
 app.use('/api/user-api-keys', userApiKeysRoutes);
@@ -93,6 +151,7 @@ app.use('/api/tools', authMiddleware, profileRoutes);
 app.use('/api/messages', authMiddleware, messagesRoutes);
 app.use('/api/group-chats', authMiddleware, groupChatRoutes);
 app.use('/api/file', authMiddleware, fileManagerRoutes);
+app.use('/api/test-case', authMiddleware, testCaseRoutes);
 
 // Admin API (configurable admin username)
 app.use('/api/admin', authMiddleware, (req, res, next) => {

@@ -2,9 +2,12 @@
   <div class="todo-page">
     <!-- Header with count and add button -->
     <div class="page-header">
+      <button class="cal-nav-btn" @click="$router.push('/tools/calendar')" title="打开日历">
+        📅 日历
+      </button>
       <h2 class="page-title">
         📋 任务待办
-        <span class="header-count">{{ personalTodos.length }}</span>
+        <span class="header-count">{{ personalTodos.filter(t => t.status === 'pending' || t.status === 'in_progress').length }}</span>
       </h2>
       <button class="add-btn" @click="showAddForm = !showAddForm" title="新增待办">
         <span class="add-icon">+</span>
@@ -125,9 +128,19 @@
         :class="{ active: personalSubTab === 'completed' }" 
         @click="personalSubTab = 'completed'"
       >
-        已完成 
+        近期完成 
         <span class="sub-tab-count">
-          {{ personalTodos.filter(t => t.status === 'completed').length }}
+          {{ personalTodos.filter(t => t.status === 'completed' && isWithinDays(t.updated_at, 3)).length }}
+        </span>
+      </button>
+      <button 
+        class="sub-tab" 
+        :class="{ active: personalSubTab === 'history' }" 
+        @click="personalSubTab = 'history'"
+      >
+        历史记录 
+        <span class="sub-tab-count">
+          {{ personalTodos.filter(t => t.status === 'completed' && !isWithinDays(t.updated_at, 3)).length }}
         </span>
       </button>
     </div>
@@ -209,7 +222,23 @@
         <!-- Card Actions -->
         <div class="card-actions" @click.stop>
           <button 
-            v-if="todo.status !== 'completed'" 
+            v-if="todo.status === 'pending'" 
+            class="action-btn start"
+            @click="updateStatus(todo, 'in_progress')" 
+            title="开始执行"
+          >
+            ▶
+          </button>
+          <button 
+            v-if="todo.status === 'in_progress'" 
+            class="action-btn done"
+            @click="updateStatus(todo, 'completed')" 
+            title="完成"
+          >
+            ✓
+          </button>
+          <button 
+            v-if="todo.status !== 'completed' && todo.status !== 'in_progress'" 
             class="action-btn done"
             @click="updateStatus(todo, 'completed')" 
             title="完成"
@@ -240,13 +269,13 @@
               v-model="editForm.description" 
               class="form-input desc-input" 
               placeholder="任务描述" 
-              rows="2"
+              :rows="editForm.descRows || 2"
             ></textarea>
             <textarea 
               v-model="editForm.solution" 
               class="form-input desc-input" 
               placeholder="解决方式" 
-              rows="2"
+              :rows="editForm.solutionRows || 2"
             ></textarea>
 
             <!-- Priority in Edit -->
@@ -417,7 +446,9 @@ const editForm = ref({
   status: 'pending', 
   progress: 0, 
   priority: 2, 
-  _todoId: null 
+  _todoId: null,
+  descRows: 2,
+  solutionRows: 2
 })
 const editingId = ref(null)
 
@@ -463,8 +494,25 @@ const personalTodos = computed(() =>
 
 const personalFilteredTodos = computed(() => {
   if (personalSubTab.value === 'all') return personalTodos.value
+  if (personalSubTab.value === 'history') {
+    // History: completed more than 3 days ago
+    return personalTodos.value.filter(t => t.status === 'completed' && !isWithinDays(t.updated_at, 3))
+  }
+  if (personalSubTab.value === 'completed') {
+    // Recent completed: completed within last 3 days
+    return personalTodos.value.filter(t => t.status === 'completed' && isWithinDays(t.updated_at, 3))
+  }
   return personalTodos.value.filter(t => t.status === personalSubTab.value)
 })
+
+function isWithinDays(dateStr, days) {
+  if (!dateStr) return false
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffDays = diffMs / (1000 * 60 * 60 * 24)
+  return diffDays <= days
+}
 
 // API Helpers
 async function api(url, options = {}) {
@@ -630,6 +678,8 @@ function startEdit(todo) {
   editingId.value = todo.id
   isEditing.value = true
   expandedId.value = todo.id
+  const descLines = (todo.description || '').split('\n').length
+  const solutionLines = (todo.solution || '').split('\n').length
   editForm.value = {
     title: todo.title,
     description: todo.description || '',
@@ -637,7 +687,9 @@ function startEdit(todo) {
     status: todo.status,
     progress: todo.progress,
     priority: todo.priority ?? 2,
-    _todoId: todo.id
+    _todoId: todo.id,
+    descRows: Math.min(Math.max(descLines, 2), 10),
+    solutionRows: Math.min(Math.max(solutionLines, 2), 10)
   }
   editNewFiles.value = []
   editNewPreviews.value = []
@@ -884,6 +936,25 @@ watch(personalSubTab, (newTab, oldTab) => {
   margin-bottom: 16px;
   gap: 12px;
   width: 100%;
+}
+
+.cal-nav-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cal-nav-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .page-title {
@@ -1356,6 +1427,11 @@ watch(personalSubTab, (newTab, oldTab) => {
 .action-btn.done:hover {
   background: rgba(46, 204, 113, 0.2);
   color: #2ecc71;
+}
+
+.action-btn.start:hover {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
 }
 
 .action-btn.reopen:hover {

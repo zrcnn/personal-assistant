@@ -1039,11 +1039,11 @@ onUnmounted(() => {
 }
 
 .back-btn {
-  padding: 8px 16px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  border-radius: 8px;
   background: var(--bg-card);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
   transition: all var(--transition);
@@ -1051,6 +1051,7 @@ onUnmounted(() => {
 
 .back-btn:hover {
   border-color: var(--accent);
+  color: var(--accent);
 }
 
 .video-title {

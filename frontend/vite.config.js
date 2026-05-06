@@ -7,7 +7,7 @@ export default defineConfig({
   build: {
     outDir: '../backend/public',
     emptyOutDir: true,
-    modulePreload: false,
+    modulePreload: true,
     rolldownOptions: {
       output: {
         codeSplitting: true,

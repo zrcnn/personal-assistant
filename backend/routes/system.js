@@ -3,6 +3,7 @@ const os = require('os');
 const fs = require('fs');
 const { execSync } = require('child_process');
 const { authMiddleware, adminOnly } = require('../middleware/auth');
+const { pool } = require('../config/db');
 
 const router = express.Router();
 
@@ -276,6 +277,96 @@ router.get('/info', authMiddleware, adminOnly, async (req, res) => {
   } catch (err) {
     console.error('[System] Get info error:', err);
     res.status(500).json({ error: '获取系统信息失败' });
+  }
+});
+
+// Traffic sampling
+let lastTrafficSample = null;
+setInterval(() => {
+  try {
+    const content = fs.readFileSync('/proc/net/dev', 'utf8').trim();
+    const lines = content.split('\n').slice(2);
+    const now = new Date();
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 10) {
+        const name = parts[0].replace(':', '');
+        if (name === 'lo') continue;
+        const rxBytes = parseInt(parts[1]);
+        const txBytes = parseInt(parts[9]);
+        if (!isNaN(rxBytes) && !isNaN(txBytes)) {
+          pool.execute(
+            'INSERT INTO network_traffic (iface, rx_bytes, tx_bytes, sampled_at) VALUES (?, ?, ?, ?)',
+            [name, rxBytes, txBytes, now]
+          ).catch(() => {});
+        }
+      }
+    }
+  } catch {}
+}, 60000); // every 60 seconds
+
+// GET /api/system/traffic?period=daily|monthly
+router.get('/traffic', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const period = req.query.period || 'daily';
+    const now = new Date();
+    let startDate;
+    let groupFormat;
+
+    if (period === 'monthly') {
+      // Last 30 days, grouped by day
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - 30);
+      groupFormat = '%Y-%m-%d';
+    } else {
+      // Last 24 hours, grouped by hour
+      startDate = new Date(now);
+      startDate.setHours(startDate.getHours() - 24);
+      groupFormat = '%Y-%m-%d %H:00';
+    }
+
+    // Get all interfaces
+    const [ifaceRows] = await pool.execute(
+      `SELECT DISTINCT iface FROM network_traffic WHERE sampled_at >= ? ORDER BY iface`,
+      [startDate]
+    );
+
+    const result = [];
+    for (const row of ifaceRows) {
+      const iface = row.iface;
+      const [rows] = await pool.execute(`
+        SELECT 
+          DATE_FORMAT(sampled_at, ?) as period,
+          MIN(rx_bytes) as rx_start,
+          MAX(rx_bytes) as rx_end,
+          MIN(tx_bytes) as tx_start,
+          MAX(tx_bytes) as tx_end
+        FROM network_traffic
+        WHERE iface = ? AND sampled_at >= ?
+        GROUP BY DATE_FORMAT(sampled_at, ?)
+        ORDER BY period
+      `, [groupFormat, iface, startDate, groupFormat]);
+
+      const stats = rows.map(r => {
+        const rx = Math.max(0, (r.rx_end || 0) - (r.rx_start || 0));
+        const tx = Math.max(0, (r.tx_end || 0) - (r.tx_start || 0));
+        return {
+          period: r.period,
+          rx: rx,
+          tx: tx,
+          total: rx + tx
+        };
+      }).filter(s => s.total > 0);
+
+      if (stats.length > 0) {
+        result.push({ iface, stats });
+      }
+    }
+
+    res.json({ period, interfaces: result });
+  } catch (err) {
+    console.error('[System] Traffic query error:', err);
+    res.status(500).json({ error: '查询流量统计失败' });
   }
 });
 

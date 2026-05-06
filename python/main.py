@@ -239,6 +239,198 @@ class StockCrawler:
             code = f'sz{code}'
         return code.lower()
 
+    def to_eastmoney_secid(self, code):
+        """转换为东方财富 secid 格式 (market.code)"""
+        code = self.normalize_code(code)
+        if code.startswith('sh'):
+            return f'1.{code[2:]}'
+        elif code.startswith('sz'):
+            return f'0.{code[2:]}'
+        elif code.startswith('bj'):
+            return f'0.{code[2:]}'
+        return f'0.{code}'
+
+    def get_kline(self, code, klt=101, count=100):
+        """获取K线数据
+        klt: 101=日K, 102=周K, 104=月K
+        count: 获取条数
+        返回: [{date, open, close, high, low, volume, amount, change_pct}]
+        """
+        code = self.normalize_code(code)
+        secid = self.to_eastmoney_secid(code)
+
+        try:
+            url = 'http://push2his.eastmoney.com/api/qt/stock/kline/get'
+            params = {
+                'secid': secid,
+                'klt': klt,
+                'fqt': 1,  # 前复权
+                'beg': '0',
+                'end': datetime.now().strftime('%Y%m%d'),
+                'fields1': 'f1,f2,f3,f4,f5,f6',
+                'fields2': 'f51,f52,f53,f54,f55,f56,f57,f58',
+            }
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://quote.eastmoney.com/',
+            }
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            data = resp.json()
+
+            if not data.get('data') or not data['data'].get('klines'):
+                return []
+
+            klines = data['data']['klines'][-count:]  # 取最近 count 条
+            result = []
+            for kl in klines:
+                parts = kl.split(',')
+                # f51=日期, f52=开盘, f53=收盘, f54=最高, f55=最低, f56=成交量, f57=成交额, f58=振幅
+                result.append({
+                    'date': parts[0],
+                    'open': float(parts[1]) if parts[1] else 0,
+                    'close': float(parts[2]) if parts[2] else 0,
+                    'high': float(parts[3]) if parts[3] else 0,
+                    'low': float(parts[4]) if parts[4] else 0,
+                    'volume': int(parts[5]) if parts[5] else 0,
+                    'amount': float(parts[6]) if parts[6] else 0,
+                    'change_pct': float(parts[7]) if parts[7] else 0,
+                })
+            return result
+        except Exception as e:
+            print(f"[Kline] Error fetching {code}: {e}")
+            return []
+
+    def get_market_indices(self):
+        """获取主要市场指数和板块走势"""
+        indices = [
+            {'secid': '1.000001', 'name': '上证指数', 'code': 'sh000001'},
+            {'secid': '0.399001', 'name': '深证成指', 'code': 'sz399001'},
+            {'secid': '0.399006', 'name': '创业板指', 'code': 'sz399006'},
+            {'secid': '1.000688', 'name': '科创50', 'code': 'sh000688'},
+            {'secid': '1.000300', 'name': '沪深300', 'code': 'sh000300'},
+        ]
+
+        results = []
+        for idx in indices:
+            try:
+                url = 'http://push2his.eastmoney.com/api/qt/stock/kline/get'
+                params = {
+                    'secid': idx['secid'],
+                    'klt': 101,
+                    'fqt': 0,
+                    'beg': '0',
+                    'end': datetime.now().strftime('%Y%m%d'),
+                    'fields1': 'f1,f2,f3,f4,f5,f6',
+                    'fields2': 'f51,f52,f53,f54,f55,f56,f57,f58',
+                }
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://quote.eastmoney.com/',
+                }
+                resp = requests.get(url, params=params, headers=headers, timeout=10)
+                data = resp.json()
+
+                klines = data.get('data', {}).get('klines', [])
+                if klines:
+                    latest = klines[-1].split(',')
+                    prev = klines[-2].split(',') if len(klines) >= 2 else latest
+                    results.append({
+                        'name': idx['name'],
+                        'code': idx['code'],
+                        'current': float(latest[2]) if latest[2] else 0,
+                        'change_pct': float(latest[7]) if latest[7] else 0,
+                        'trend': 'up' if float(latest[7]) >= 0 else 'down',
+                        'kline': [
+                            {'date': kl.split(',')[0], 'close': float(kl.split(',')[2])}
+                            for kl in klines[-20:]  # 最近20天走势
+                        ]
+                    })
+            except Exception as e:
+                print(f"[Indices] Error fetching {idx['name']}: {e}")
+                continue
+
+        return results
+
+    def get_sector_heatmap(self):
+        """获取行业板块涨跌幅"""
+        try:
+            url = 'http://push2.eastmoney.com/api/qt/clist/get'
+            params = {
+                'pn': '1', 'pz': '30', 'po': '1', 'np': '1',
+                'ut': 'bd1d9ddb04089700cf9c27f6f7426281',
+                'fltt': '2', 'invt': '2', 'fid': 'f3',
+                'fs': 'm:90+t:1',  # 行业板块
+                'fields': 'f12,f14,f2,f3',
+            }
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://quote.eastmoney.com/',
+            }
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            data = resp.json()
+
+            results = []
+            for item in data.get('data', {}).get('diff', []):
+                results.append({
+                    'name': item.get('f14', ''),
+                    'code': item.get('f12', ''),
+                    'current': item.get('f2', 0),
+                    'change_pct': item.get('f3', 0),
+                    'trend': 'up' if item.get('f3', 0) >= 0 else 'down',
+                })
+            return results[:20]  # 取前20个行业
+        except Exception as e:
+            print(f"[Sector] Error: {e}")
+            return []
+
+    def get_sector_kline(self, code, count=20):
+        """获取板块K线数据
+        code: 板块代码 (如 BK0491)
+        count: 获取条数
+        返回: [{date, open, close, high, low, volume, amount, change_pct}]
+        """
+        try:
+            # 板块代码转 secid 格式：板块用 m:90+t:2+{code}
+            secid = f'm:90+t:2+{code}'
+            url = 'http://push2his.eastmoney.com/api/qt/stock/kline/get'
+            params = {
+                'secid': secid,
+                'klt': 101,
+                'fqt': 0,
+                'beg': '0',
+                'end': datetime.now().strftime('%Y%m%d'),
+                'fields1': 'f1,f2,f3,f4,f5,f6',
+                'fields2': 'f51,f52,f53,f54,f55,f56,f57,f58',
+            }
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://quote.eastmoney.com/',
+            }
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            data = resp.json()
+
+            if not data.get('data') or not data['data'].get('klines'):
+                return []
+
+            klines = data['data']['klines'][-count:]
+            result = []
+            for kl in klines:
+                parts = kl.split(',')
+                result.append({
+                    'date': parts[0],
+                    'open': float(parts[1]) if parts[1] else 0,
+                    'close': float(parts[2]) if parts[2] else 0,
+                    'high': float(parts[3]) if parts[3] else 0,
+                    'low': float(parts[4]) if parts[4] else 0,
+                    'volume': int(parts[5]) if parts[5] else 0,
+                    'amount': float(parts[6]) if parts[6] else 0,
+                    'change_pct': float(parts[7]) if parts[7] else 0,
+                })
+            return result
+        except Exception as e:
+            print(f"[Sector Kline] Error fetching {code}: {e}")
+            return []
+
 
 crawler = StockCrawler()
 
@@ -594,6 +786,41 @@ async def get_suggestions():
         {'code': 'sz000725', 'name': '京东方A'},
     ]
     return {'suggest': hot_stocks}
+
+@app.get("/api/stock/kline")
+async def get_kline(code: str, klt: int = 101, count: int = 100):
+    """获取K线数据
+    klt: 101=日K, 102=周K, 104=月K
+    count: 获取条数 (默认100)
+    """
+    code = crawler.normalize_code(code)
+    klines = crawler.get_kline(code, klt=klt, count=count)
+    if not klines:
+        raise HTTPException(status_code=404, detail=f"未找到股票 {code} 的K线数据")
+    return {'klines': klines, 'code': code}
+
+@app.get("/api/market/indices")
+async def get_market_indices():
+    """获取主要市场指数走势"""
+    indices = crawler.get_market_indices()
+    return {'indices': indices}
+
+@app.get("/api/market/sectors")
+async def get_sector_heatmap():
+    """获取行业板块涨跌幅"""
+    sectors = crawler.get_sector_heatmap()
+    return {'sectors': sectors}
+
+@app.get("/api/market/sector/kline")
+async def get_sector_kline(code: str, count: int = 20):
+    """获取板块K线走势
+    code: 板块代码 (如 BK0491)
+    count: 获取条数 (默认20)
+    """
+    klines = crawler.get_sector_kline(code, count=count)
+    if not klines:
+        raise HTTPException(status_code=404, detail=f"未找到板块 {code} 的K线数据")
+    return {'klines': klines, 'code': code}
 
 @app.get("/health")
 async def health():

@@ -504,13 +504,13 @@ onMounted(async () => {
 }
 
 .back-btn {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
   padding: 6px 12px;
-  border-radius: var(--radius-sm, 6px);
-  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
   font-size: 14px;
+  cursor: pointer;
   transition: all var(--transition);
 }
 

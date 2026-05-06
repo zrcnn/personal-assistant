@@ -53,8 +53,8 @@
       <div class="chat-window">
         <template v-if="activeTab === 'direct' && currentConv">
           <div class="chat-header">
-            <div class="chat-header-avatar">{{ currentConv.other_user.username.charAt(0).toUpperCase() }}</div>
-            <span class="chat-header-name">{{ currentConv.other_user.username }}</span>
+            <div class="chat-header-avatar">{{ (currentConv.other_user?.username || '?').charAt(0).toUpperCase() }}</div>
+            <span class="chat-header-name">{{ currentConv.other_user?.username || '加载中...' }}</span>
           </div>
           <div class="chat-messages" ref="messagesRef">
             <div v-for="msg in messages" :key="msg.id" class="msg-row" :class="{ mine: msg.sender_id === myUserId }">
@@ -551,12 +551,22 @@ async function startConversation(user) {
   searchResults.value = []
   try {
     const res = await userMessagesAPI.createConversation(user.id)
+    console.log('[startConversation] API response:', res.data)
     const conv = res.data.conversation
+    console.log('[startConversation] conv:', conv)
     const existing = conversations.value.find(c => c.id === conv.id)
     if (existing) {
       await selectConversation(existing)
     } else {
-      const newConv = { id: conv.id, other_user: conv.other_user, last_message: '', last_message_time: null, unread_count: 0 }
+      // 确保 other_user 正确设置
+      const newConv = {
+        id: conv.id,
+        other_user: conv.other_user || { id: user.id, username: user.username },
+        last_message: '',
+        last_message_time: null,
+        unread_count: 0
+      }
+      console.log('[startConversation] newConv:', newConv)
       conversations.value.unshift(newConv)
       await selectConversation(newConv)
     }

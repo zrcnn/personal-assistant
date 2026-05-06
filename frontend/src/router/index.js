@@ -174,6 +174,11 @@ const routes = [
         meta: { admin: true },
         name: 'ModelUsage',
         component: lazyLoad(() => import('../views/ModelUsageView.vue'))
+      },
+      {
+        path: 'tools/test-case',
+        name: 'TestCase',
+        component: lazyLoad(() => import('../views/TestCaseView.vue'))
       }
     ]
   },

@@ -156,8 +156,21 @@ onMounted(fetchBookmarks)
 .bookmarks-page { max-width: 700px; margin: 0 auto; padding: 20px; }
 .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .page-header h2 { font-size: 20px; color: var(--text-primary); flex: 1; }
-.back-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
-.back-btn:hover { color: var(--accent); }
+.back-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.back-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .add-btn { padding: 8px 16px; border-radius: var(--radius-md); border: none; background: var(--accent); color: #fff; cursor: pointer; font-size: 14px; }
 
 .search-bar { margin-bottom: 12px; }

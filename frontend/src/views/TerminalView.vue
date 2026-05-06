@@ -244,15 +244,20 @@ onUnmounted(() => {
 }
 
 .back-btn {
-  padding: 4px 12px;
-  border-radius: 4px;
-  border: 1px solid #0f3460;
-  background: transparent;
-  color: #e2e8f0;
-  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 14px;
   cursor: pointer;
+  transition: all var(--transition);
 }
-.back-btn:hover { background: #0f3460; }
+
+.back-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .terminal-title {
   color: #a29bfe;

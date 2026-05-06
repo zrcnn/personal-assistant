@@ -32,25 +32,31 @@
         </div>
 
         <!-- Custom model name -->
-        <div v-if="form.model === '__custom__'" class="form-group">
+        <div v-if="form.provider === 'custom'" class="form-group">
           <label class="form-label">自定义模型名</label>
           <input v-model="form.customModel" class="form-input" placeholder="输入自定义模型名称" />
+          <div v-if="editingId && existingModelName && form.model !== '__custom__'" class="form-hint">
+            当前模型: {{ existingModelName }}
+          </div>
         </div>
 
         <!-- API Key -->
         <div class="form-group">
-          <label class="form-label">API Key</label>
+          <label class="form-label">API Key <span class="optional">({{ editingId ? '留空则保持不变' : '必填' }})</span></label>
           <div class="input-with-toggle">
             <input
               v-model="form.apiKey"
               :type="showKey ? 'text' : 'password'"
               class="form-input"
-              placeholder="sk-..."
+              :placeholder="editingId ? '留空则保持原 Key 不变' : 'sk-...'"
               autocomplete="off"
             />
             <button class="toggle-btn" @click="showKey = !showKey" type="button">
               {{ showKey ? '🙈' : '👁️' }}
             </button>
+          </div>
+          <div v-if="editingId && existingKeyMasked" class="form-hint">
+            当前 Key: {{ existingKeyMasked }}
           </div>
         </div>
 
@@ -169,6 +175,9 @@ const form = ref({
   enabled: true
 })
 
+const existingKeyMasked = ref('')
+const existingModelName = ref('')
+
 const defaultBaseUrl = computed(() => {
   const p = providers.find(p => p.id === form.value.provider)
   return p ? p.defaultBase : ''
@@ -204,22 +213,38 @@ async function loadKeys() {
 function editKey(key) {
   editingId.value = key.id
   form.value.provider = key.provider || ''
-  form.value.model = key.model_name || ''
-  form.value.customModel = ''
-  form.value.apiKey = key.api_key || ''
+  // Handle model selection: if it's a known model in the list, select it; otherwise mark as custom
+  const providerModels = providers.find(p => p.id === key.provider)?.models || []
+  if (providerModels.includes(key.model_name)) {
+    form.value.model = key.model_name
+    form.value.customModel = ''
+  } else if (key.provider === 'custom' || !providerModels.length) {
+    form.value.model = '__custom__'
+    form.value.customModel = key.model_name || ''
+  } else {
+    form.value.model = key.model_name || ''
+    form.value.customModel = ''
+  }
+  existingModelName.value = key.model_name || ''
+  form.value.apiKey = '' // 留空表示不修改
   form.value.baseUrl = key.api_base || ''
   form.value.enabled = key.is_active !== false
+  existingKeyMasked.value = key.api_key || '****'
   showKey.value = false
   formMsg.value = ''
 }
 
 function cancelEdit() {
   editingId.value = null
+  existingKeyMasked.value = ''
+  existingModelName.value = ''
   resetForm()
 }
 
 function resetForm() {
   form.value = { provider: '', model: '', customModel: '', apiKey: '', baseUrl: '', enabled: true }
+  existingKeyMasked.value = ''
+  existingModelName.value = ''
   showKey.value = false
   formMsg.value = ''
   formMsgType.value = ''
@@ -251,7 +276,8 @@ async function submitForm() {
     return
   }
 
-  if (!form.value.apiKey.trim()) {
+  // 新增时必填，编辑时可选（留空则保持原 Key）
+  if (!editingId.value && !form.value.apiKey.trim()) {
     formMsg.value = '请输入 API Key'
     formMsgType.value = 'error'
     return
@@ -322,11 +348,11 @@ onMounted(loadKeys)
 }
 
 .back-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  padding: 6px 12px;
   border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
   color: var(--text-secondary);
-  padding: 6px 14px;
   font-size: 14px;
   cursor: pointer;
   transition: all var(--transition);
@@ -424,6 +450,12 @@ onMounted(loadKeys)
   cursor: pointer;
   padding: 4px 8px;
   font-size: 16px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 /* Switch */

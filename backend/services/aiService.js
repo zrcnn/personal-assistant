@@ -148,7 +148,12 @@ async function sendChatStream(conversationHistory, userMessage, onChunk, config 
   const isHttps = parsedUrl.protocol === 'https:';
   const lib = isHttps ? https : http;
   
-  const url = new URL(modelConfig.baseUrl + '/chat/completions');
+  // Handle baseUrl that already ends with /chat/completions
+  let endpoint = modelConfig.baseUrl;
+  if (!endpoint.endsWith('/chat/completions')) {
+    endpoint = endpoint.endsWith('/') ? endpoint + 'chat/completions' : endpoint + '/chat/completions';
+  }
+  const url = new URL(endpoint);
   
   const body = JSON.stringify({
     model: modelConfig.model,
@@ -242,7 +247,12 @@ async function sendChat(conversationHistory, userMessage, config = {}) {
   const isHttps = parsedUrl.protocol === 'https:';
   const lib = isHttps ? https : http;
   
-  const url = new URL(modelConfig.baseUrl + '/chat/completions');
+  // Handle baseUrl that already ends with /chat/completions
+  let endpoint = modelConfig.baseUrl;
+  if (!endpoint.endsWith('/chat/completions')) {
+    endpoint = endpoint.endsWith('/') ? endpoint + 'chat/completions' : endpoint + '/chat/completions';
+  }
+  const url = new URL(endpoint);
   
   const body = JSON.stringify({
     model: modelConfig.model,

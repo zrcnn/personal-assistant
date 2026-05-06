@@ -483,15 +483,18 @@ onMounted(() => {
 }
 
 .back-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
   font-size: 14px;
-  flex-shrink: 0;
+  cursor: pointer;
+  transition: all var(--transition);
 }
 
 .back-btn:hover {
+  border-color: var(--accent);
   color: var(--accent);
 }
 

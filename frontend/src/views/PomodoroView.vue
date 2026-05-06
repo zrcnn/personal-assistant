@@ -183,8 +183,21 @@ onUnmounted(() => { if (interval) clearInterval(interval) })
 .pomodoro-page { max-width: 500px; margin: 0 auto; padding: 20px; }
 .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
 .page-header h2 { font-size: 20px; color: var(--text-primary); flex: 1; }
-.back-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
-.back-btn:hover { color: var(--accent); }
+.back-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.back-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .timer-section { text-align: center; padding: 32px 20px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 20px; }
 .mode-tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 32px; }

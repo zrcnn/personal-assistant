@@ -153,6 +153,139 @@ async function ensureTables() {
     VALUES (999999, 'NE', 'bot_account_no_login', '/avatars/ne-bot.png')
   `);
 
+  // ===== New tables for enhanced messaging =====
+
+  // User notes (remarks and blocking)
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS user_notes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      target_user_id INT NOT NULL,
+      remark_name VARCHAR(100) DEFAULT NULL,
+      remark_description TEXT DEFAULT NULL,
+      is_blocked TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE INDEX idx_user_target (user_id, target_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Private chat message attachments
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS message_attachments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      message_id INT NOT NULL,
+      message_type ENUM('user','group') NOT NULL,
+      file_type VARCHAR(50) NOT NULL DEFAULT 'image',
+      file_path VARCHAR(500) NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      file_size INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_cleanup (created_at),
+      FOREIGN KEY (message_id) REFERENCES user_messages(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Group chat message attachments
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS group_message_attachments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      message_id INT NOT NULL,
+      message_type ENUM('user','group') NOT NULL,
+      file_type VARCHAR(50) NOT NULL DEFAULT 'image',
+      file_path VARCHAR(500) NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      file_size INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_cleanup (created_at),
+      FOREIGN KEY (message_id) REFERENCES group_messages(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Add message_type and attachment_id to user_messages (ignore errors if columns exist)
+  try {
+    await pool.execute(`
+      ALTER TABLE user_messages
+      ADD COLUMN message_type ENUM('text','image') DEFAULT 'text' AFTER content,
+      ADD COLUMN attachment_id INT NULL AFTER message_type
+    `);
+  } catch (e) { /* column may already exist */ }
+
+  // Add message_type and attachment_id to group_messages
+  try {
+    await pool.execute(`
+      ALTER TABLE group_messages
+      ADD COLUMN message_type ENUM('text','image') DEFAULT 'text' AFTER content,
+      ADD COLUMN attachment_id INT NULL AFTER message_type
+    `);
+  } catch (e) { /* column may already exist */ }
+
+  // ===== Test Case Generator Tables =====
+
+  // Products table
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS products (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      name VARCHAR(200) NOT NULL,
+      description TEXT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Requirements table
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS requirements (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      product_id INT NOT NULL,
+      user_id INT NOT NULL,
+      title VARCHAR(500) NOT NULL,
+      description TEXT DEFAULT NULL,
+      type ENUM('functional','non-functional','ui','performance','security','compatibility') DEFAULT 'functional',
+      priority ENUM('high','medium','low') DEFAULT 'medium',
+      ai_validated TINYINT(1) DEFAULT 0,
+      ai_validation_result TEXT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_product_id (product_id),
+      INDEX idx_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Test cases table
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS test_cases (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      requirement_id INT NOT NULL,
+      product_id INT NOT NULL,
+      user_id INT NOT NULL,
+      case_id VARCHAR(100) DEFAULT NULL,
+      title VARCHAR(500) NOT NULL,
+      description TEXT DEFAULT NULL,
+      preconditions TEXT DEFAULT NULL,
+      steps TEXT DEFAULT NULL,
+      expected_result TEXT DEFAULT NULL,
+      priority ENUM('high','medium','low') DEFAULT 'medium',
+      type ENUM('functional','regression','smoke','integration','unit','acceptance') DEFAULT 'functional',
+      ai_generated TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (requirement_id) REFERENCES requirements(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_requirement_id (requirement_id),
+      INDEX idx_product_id (product_id),
+      INDEX idx_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   console.log('[DB] Tables ensured.');
 }
 

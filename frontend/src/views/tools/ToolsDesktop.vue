@@ -40,6 +40,7 @@ const tools = [
   { icon: '🎨', name: '绘图板', desc: '画布绘图、形状、文字工具', route: '/tools/draw' },
   { icon: '📁', name: '文件管理', desc: '文件浏览、上传、下载、打包', route: '/tools/file-manager' },
   { icon: '📰', name: '新闻', desc: 'AI编程新闻日报', route: '/tools/news' },
+  { icon: '📝', name: '测试用例', desc: 'AI 自动生成测试用例', route: '/tools/test-case' },
 ]
 
 const isAdminUser = computed(() => localStorage.getItem('username') === 'zrc')
