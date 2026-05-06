@@ -8,6 +8,9 @@ const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
+// 内部 API 基础地址（用于调用其他内部接口）
+const INTERNAL_API_BASE = 'http://127.0.0.1:8090';
+
 // OpenClaw Gateway config
 const OPENCLAW_GATEWAY_URL = 'http://127.0.0.1:18789';
 const OPENCLAW_AUTH_TOKEN = 'zrc837303';
@@ -90,13 +93,25 @@ router.get('/', authMiddleware, async (req, res) => {
     const source = req.query.source;
     let query, params;
     if (source === 'ne') {
-      query = 'SELECT * FROM todos WHERE user_id = ? AND source IN (?, ?) ORDER BY created_at DESC';
+      query = `SELECT todos.*, tool_events.id as event_id, tool_events.start_time as event_start_time
+        FROM todos
+        LEFT JOIN tool_events ON todos.id = tool_events.todo_id
+        WHERE todos.user_id = ? AND todos.source IN (?, ?)
+        ORDER BY todos.created_at DESC`;
       params = [req.user.id, 'feishu', 'ne'];
     } else if (source === 'personal') {
-      query = 'SELECT * FROM todos WHERE user_id = ? AND (source = ? OR source IS NULL) ORDER BY priority ASC, created_at DESC';
+      query = `SELECT todos.*, tool_events.id as event_id, tool_events.start_time as event_start_time
+        FROM todos
+        LEFT JOIN tool_events ON todos.id = tool_events.todo_id
+        WHERE todos.user_id = ? AND (todos.source = ? OR todos.source IS NULL)
+        ORDER BY todos.priority ASC, todos.created_at DESC`;
       params = [req.user.id, 'manual'];
     } else {
-      query = 'SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC';
+      query = `SELECT todos.*, tool_events.id as event_id, tool_events.start_time as event_start_time
+        FROM todos
+        LEFT JOIN tool_events ON todos.id = tool_events.todo_id
+        WHERE todos.user_id = ?
+        ORDER BY todos.created_at DESC`;
       params = [req.user.id];
     }
     const [rows] = await pool.execute(query, params);
@@ -166,6 +181,59 @@ router.put('/:id', authMiddleware, async (req, res) => {
       ? 100
       : validatedProgress;
 
+    // 检测状态变化：从非 completed 变为 completed 时自动创建日历日程
+    const oldStatus = existing[0].status;
+    const todoForEvent = existing[0];
+    if (oldStatus !== 'completed' && finalStatus === 'completed') {
+      // 异步创建日程事件，不阻塞响应
+      ;(async () => {
+        try {
+          // 先检查是否已有关联的日程
+          const [existingEvents] = await pool.execute(
+            'SELECT id FROM tool_events WHERE todo_id = ?',
+            [id]
+          );
+          if (existingEvents.length > 0) {
+            console.log(`[Todo] Todo #${id} already has associated event, skipping auto-create`);
+            return;
+          }
+          const now = new Date();
+          const endTime = new Date(now.getTime() + 60 * 60 * 1000);
+          const formatDateTime = (d) => {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
+          };
+          const resp = await fetch(`${INTERNAL_API_BASE}/api/tools/events`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${req.headers.authorization?.split(' ')[1] || ''}`
+            },
+            body: JSON.stringify({
+              title: `✅ 完成：${todoForEvent.title}`,
+              description: todoForEvent.description || null,
+              start_time: formatDateTime(now),
+              end_time: formatDateTime(endTime),
+              color: '#51cf66',
+              todo_id: id
+            })
+          });
+          if (resp.ok) {
+            const result = await resp.json();
+            // 更新 todo 的关联（如果创建成功）
+            if (result.id) {
+              await pool.execute(
+                'UPDATE tool_events SET todo_id = ? WHERE id = ?',
+                [id, result.id]
+              );
+            }
+            console.log(`[Todo] Auto-created calendar event #${result.id} for completed todo #${id}`);
+          }
+        } catch (err) {
+          console.error('[Todo] Failed to create auto calendar event:', err);
+        }
+      })();
+    }
+
     await pool.execute(
       `UPDATE todos SET title = ?, description = ?, solution = ?, status = ?, progress = ?, source = ?, priority = ?
        WHERE id = ? AND user_id = ?`,
@@ -208,6 +276,66 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[Todo] DELETE error:', err);
     res.status(500).json({ error: '删除待办失败' });
+  }
+});
+
+// POST /api/todos/:id/map-to-calendar — manually map a todo to a calendar event
+router.post('/:id/map-to-calendar', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { start_time, end_time, color, description } = req.body;
+
+    if (!start_time) {
+      return res.status(400).json({ error: '开始时间不能为空' });
+    }
+
+    // 验证待办存在且属于当前用户
+    const [todos] = await pool.execute(
+      'SELECT * FROM todos WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    if (todos.length === 0) {
+      return res.status(404).json({ error: '待办不存在' });
+    }
+    const todo = todos[0];
+
+    // 检查是否已有关联的日程
+    const [existingEvents] = await pool.execute(
+      'SELECT * FROM tool_events WHERE todo_id = ?',
+      [id]
+    );
+    if (existingEvents.length > 0) {
+      return res.json({
+        success: true,
+        message: '该待办已关联日程',
+        event: existingEvents[0]
+      });
+    }
+
+    // 创建新日程，关联 todo_id
+    const formatDateTime = (d) => {
+      if (typeof d === 'string') return d;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
+    };
+
+    const [result] = await pool.execute(
+      'INSERT INTO tool_events (user_id, title, description, start_time, end_time, color, todo_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, todo.title, description || todo.description || '', formatDateTime(start_time), end_time ? formatDateTime(end_time) : null, color || '#4a9eff', id]
+    );
+
+    const [newEvent] = await pool.execute(
+      'SELECT * FROM tool_events WHERE id = ?',
+      [result.insertId]
+    );
+
+    res.json({
+      success: true,
+      message: '已创建日历关联',
+      event: newEvent[0]
+    });
+  } catch (err) {
+    console.error('[Todo] map-to-calendar error:', err);
+    res.status(500).json({ error: '创建日历关联失败' });
   }
 });
 

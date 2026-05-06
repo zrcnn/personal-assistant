@@ -46,12 +46,17 @@ async function ensureToolTables() {
       end_time DATETIME,
       color VARCHAR(20) DEFAULT '#4a9eff',
       reminded TINYINT(1) DEFAULT 0,
+      todo_id INT DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       INDEX idx_user_id (user_id),
-      INDEX idx_start_time (start_time)
+      INDEX idx_start_time (start_time),
+      INDEX idx_todo_id (todo_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  // Migrate: add todo_id column if missing
+  try { await pool.execute('ALTER TABLE tool_events ADD COLUMN todo_id INT DEFAULT NULL'); } catch {}
+  try { await pool.execute('ALTER TABLE tool_events ADD INDEX idx_todo_id (todo_id)'); } catch {}
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS tool_bookmarks (
@@ -269,7 +274,7 @@ router.get('/events', async (req, res) => {
   try {
     const userId = req.user.id;
     const { start, end } = req.query;
-    let sql = 'SELECT * FROM tool_events WHERE user_id = ?';
+    let sql = 'SELECT id, user_id, title, description, start_time, end_time, color, reminded, todo_id, created_at FROM tool_events WHERE user_id = ?';
     const params = [userId];
     if (start) { sql += ' AND start_time >= ?'; params.push(start); }
     if (end) { sql += ' AND start_time <= ?'; params.push(end); }
@@ -284,12 +289,12 @@ router.get('/events', async (req, res) => {
 
 router.post('/events', async (req, res) => {
   try {
-    const { title, description, start_time, end_time, color } = req.body;
+    const { title, description, start_time, end_time, color, todo_id } = req.body;
     const [result] = await pool.execute(
-      'INSERT INTO tool_events (user_id, title, description, start_time, end_time, color) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, title, description || '', start_time, end_time || null, color || '#4a9eff']
+      'INSERT INTO tool_events (user_id, title, description, start_time, end_time, color, todo_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, title, description || '', start_time, end_time || null, color || '#4a9eff', todo_id || null]
     );
-    res.json({ id: result.insertId });
+    res.json({ id: result.insertId, todo_id: todo_id || null });
   } catch (err) {
     console.error('[Events] Create error:', err);
     res.status(500).json({ error: '创建日程失败' });
@@ -298,10 +303,20 @@ router.post('/events', async (req, res) => {
 
 router.put('/events/:id', async (req, res) => {
   try {
-    const { title, description, start_time, end_time, color } = req.body;
+    const { title, description, start_time, end_time, color, todo_id } = req.body;
+    const fields = [];
+    const values = [];
+    if (title !== undefined) { fields.push('title = ?'); values.push(title); }
+    if (description !== undefined) { fields.push('description = ?'); values.push(description); }
+    if (start_time !== undefined) { fields.push('start_time = ?'); values.push(start_time); }
+    if (end_time !== undefined) { fields.push('end_time = ?'); values.push(end_time); }
+    if (color !== undefined) { fields.push('color = ?'); values.push(color); }
+    if (todo_id !== undefined) { fields.push('todo_id = ?'); values.push(todo_id); }
+    if (fields.length === 0) return res.status(400).json({ error: '没有更新字段' });
+    values.push(req.params.id, req.user.id);
     await pool.execute(
-      `UPDATE tool_events SET title=?, description=?, start_time=?, end_time=?, color=? WHERE id=? AND user_id=?`,
-      [title, description, start_time, end_time, color, req.params.id, req.user.id]
+      `UPDATE tool_events SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`,
+      values
     );
     res.json({ success: true });
   } catch (err) {
@@ -614,7 +629,13 @@ router.get('/news', async (req, res) => {
     const items = [];
     for (const row of rows) {
       const tags = await getNewsTags(row.id);
-      items.push({ ...row, tags });
+      items.push({
+        ...row,
+        tags,
+        publish_date: row.publish_date instanceof Date
+          ? row.publish_date.toISOString().split('T')[0]
+          : row.publish_date
+      });
     }
 
     // Get category stats (global)
@@ -678,10 +699,18 @@ router.get('/news/:id', async (req, res) => {
     const news = rows[0];
     const tags = await getNewsTags(news.id);
 
+    // Format publish_date to YYYY-MM-DD string
+    const formattedNews = {
+      ...news,
+      publish_date: news.publish_date instanceof Date
+        ? news.publish_date.toISOString().split('T')[0]
+        : news.publish_date
+    };
+
     // Increment view count
     await pool.execute('UPDATE tool_news SET view_count = view_count + 1 WHERE id = ?', [news.id]);
 
-    res.json({ ...news, tags });
+    res.json({ ...formattedNews, tags });
   } catch (err) {
     console.error('[News] Get error:', err);
     res.status(500).json({ error: '获取新闻详情失败' });

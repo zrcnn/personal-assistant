@@ -43,35 +43,32 @@
       </div>
     </div>
 
-    <!-- Day Detail Modal -->
-    <div v-if="showDayDetail" class="modal-overlay" @click.self="showDayDetail = false">
-      <div class="detail-modal">
-        <div class="detail-header">
-          <div class="detail-date-info">
-            <h3>{{ selectedDate }}</h3>
-            <span class="detail-lunar festival" v-if="getLunarInfo(selectedDate)">{{ getLunarInfo(selectedDate).fullText }}</span>
-            <span v-else class="detail-lunar">&nbsp;</span>
-            <span v-if="isRestDay(selectedDate)" class="rest-tag">休息日</span>
-            <span v-else-if="isWorkDay(selectedDate)" class="work-tag">工作日</span>
-          </div>
-          <button class="close-btn" @click="showDayDetail = false">✕</button>
+    <!-- 日程卡片展示区域（日历下方） -->
+    <div class="day-detail-card">
+      <div class="card-header">
+        <div class="card-date-info">
+          <h3>{{ selectedDate || `${viewYear}年${viewMonth + 1}月日程` }}</h3>
+          <span v-if="selectedDate && getLunarInfo(selectedDate)" class="detail-lunar festival">{{ getLunarInfo(selectedDate).fullText }}</span>
+          <span v-else-if="selectedDate && isRestDay(selectedDate)" class="rest-tag">休息日</span>
+          <span v-else-if="selectedDate && isWorkDay(selectedDate)" class="work-tag">工作日</span>
         </div>
-        <div class="detail-body">
-          <div v-for="e in selectedEvents" :key="e.id" class="event-card" :style="{ borderLeftColor: e.color }">
-            <div class="event-info">
-              <strong>{{ e.title }}</strong>
-              <span class="event-time">{{ formatTimeRange(e.start_time, e.end_time) }}</span>
-              <p v-if="e.description">{{ e.description }}</p>
-            </div>
-            <div class="event-actions">
-              <button @click="openEditor(e)" title="编辑">✏️</button>
-              <button @click="deleteEvent(e.id)" title="删除">🗑️</button>
-            </div>
+        <button v-if="selectedDate" class="close-btn" @click="selectedDate = ''" title="显示全部">✕ 显示全部</button>
+      </div>
+      <div class="card-body">
+        <div v-for="e in selectedEvents" :key="e.id" class="event-card" :style="{ borderLeftColor: e.color }">
+          <div class="event-info">
+            <strong>{{ e.title }}</strong>
+            <span class="event-time">{{ formatTimeRange(e.start_time, e.end_time) }}</span>
+            <p v-if="e.description">{{ e.description }}</p>
           </div>
-          <div v-if="selectedEvents.length === 0" class="no-events">
-            <span>暂无日程</span>
-            <button class="quick-add" @click="openEditor()">+ 添加日程</button>
+          <div class="event-actions">
+            <button @click="openEditor(e)" title="编辑">✏️</button>
+            <button @click="deleteEvent(e.id)" title="删除">🗑️</button>
           </div>
+        </div>
+        <div v-if="selectedEvents.length === 0" class="no-events">
+          <span>{{ selectedDate ? '该日期暂无日程' : '本月暂无日程' }}</span>
+          <button class="quick-add" @click="openEditor()">+ 添加日程</button>
         </div>
       </div>
     </div>
@@ -105,7 +102,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -184,7 +181,13 @@ const calendarDays = computed(() => {
   return days
 })
 
-const selectedEvents = computed(() => getEventsForDate(selectedDate.value))
+const selectedEvents = computed(() => {
+  if (selectedDate.value) {
+    return getEventsForDate(selectedDate.value)
+  }
+  // 未选择具体日期时，显示当前加载的所有日程（过去两周+当前视图月份）
+  return events.value
+})
 
 function fmt(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -304,8 +307,25 @@ async function deleteEvent(id) {
 }
 
 async function fetchEvents() {
-  const start = `${viewYear.value}-${String(viewMonth.value + 1).padStart(2, '0')}-01`
-  const end = `${viewYear.value}-${String(viewMonth.value + 1).padStart(2, '0')}-31`
+  // 优先加载过去两周到当前月份月底的范围
+  const today = new Date()
+  const twoWeeksAgo = new Date(today)
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14)
+  
+  const currentMonthEnd = new Date(viewYear.value, viewMonth.value + 1, 0)
+  
+  // 开始时间：取「两周前」和「当前视图月初」中更早的那个
+  const viewMonthStart = new Date(viewYear.value, viewMonth.value, 1)
+  const startDate = twoWeeksAgo < viewMonthStart ? twoWeeksAgo : viewMonthStart
+  
+  // 结束时间：取「当前视图月底」和「今天之后30天」中更晚的那个
+  const futureEnd = new Date(today)
+  futureEnd.setDate(futureEnd.getDate() + 30)
+  const endDate = currentMonthEnd > futureEnd ? currentMonthEnd : futureEnd
+  
+  const start = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`
+  const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
+  
   try {
     const resp = await fetch(`/api/tools/events?start=${start}&end=${end}`, {
       headers: { 'Authorization': `Bearer ${auth.token}` }
@@ -340,8 +360,12 @@ function clearSearch() {
   searchResult.value = ''
 }
 
+// 月份变化时自动重新获取日程
+watch([viewYear, viewMonth], () => {
+  fetchEvents()
+})
+
 onMounted(() => { 
-  // 进入日历页面时只显示日历视图，不自动打开日程详情
   viewYear.value = now.getFullYear()
   viewMonth.value = now.getMonth()
   fetchEvents() 
@@ -352,8 +376,21 @@ onMounted(() => {
 .calendar-page { max-width: 900px; margin: 0 auto; padding: 20px; }
 .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .page-header h2 { font-size: 20px; color: var(--text-primary); flex: 0 0 auto; }
-.back-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
-.back-btn:hover { color: var(--accent); }
+.back-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.back-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .search-box {
   display: flex;
@@ -442,27 +479,30 @@ onMounted(() => {
 .rest-badge { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
 .work-badge { background: rgba(81, 207, 102, 0.15); color: #51cf66; }
 
-/* Detail Modal */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
-.detail-modal {
+/* 日程卡片展示区域（日历下方） */
+.day-detail-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  width: 100%;
-  max-width: 500px;
-  max-height: 80vh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  margin-top: 16px;
+  animation: slideDown 0.2s ease-out;
 }
-.detail-header {
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
-.detail-date-info h3 { font-size: 18px; color: var(--text-primary); margin: 0; }
+.card-date-info h3 { font-size: 18px; color: var(--text-primary); margin: 0; }
+.card-body {
+  padding: 16px 20px;
+}
 .detail-lunar { font-size: 13px; color: var(--text-muted); margin-left: 8px; }
 .detail-lunar.festival { color: var(--danger); font-weight: 600; }
 .rest-tag, .work-tag {
@@ -476,12 +516,6 @@ onMounted(() => {
 .work-tag { background: rgba(81, 207, 102, 0.15); color: #51cf66; }
 .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 4px; }
 .close-btn:hover { color: var(--text-primary); }
-
-.detail-body {
-  padding: 16px 20px;
-  overflow-y: auto;
-  flex: 1;
-}
 .event-card {
   display: flex;
   justify-content: space-between;
@@ -512,6 +546,18 @@ onMounted(() => {
   font-size: 14px;
 }
 .quick-add:hover { background: var(--bg-tertiary); }
+
+/* 日程详情弹窗 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
 
 /* Editor Modal */
 .modal {
