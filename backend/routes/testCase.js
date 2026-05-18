@@ -258,7 +258,8 @@ router.get('/test-cases', authMiddleware, async (req, res) => {
 // POST /api/test-case/test-cases — 创建测试用例
 router.post('/test-cases', authMiddleware, async (req, res) => {
   try {
-    const { requirement_id, product_id, title, description, preconditions, steps, expected_result, priority, type } = req.body;
+    // 支持前端字段名到数据库字段名的映射
+    const { requirement_id, product_id, title, description, preconditions, precondition, steps, expected_result, expected, actual_result, actual, priority, type, passed } = req.body;
 
     // 验证必填字段
     if (!title || !title.trim()) {
@@ -290,9 +291,9 @@ router.post('/test-cases', authMiddleware, async (req, res) => {
     }
 
     const [result] = await pool.execute(
-      `INSERT INTO test_cases (user_id, requirement_id, product_id, title, description, preconditions, steps, expected_result, priority, type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, requirement_id, product_id, title.trim(), description || null, preconditions || null, steps || null, expected_result || null, priority || null, type || null]
+      `INSERT INTO test_cases (user_id, requirement_id, product_id, title, description, preconditions, steps, expected_result, actual_result, passed, priority, type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, requirement_id, product_id, title.trim(), description || null, preconditions || precondition || null, steps || null, expected_result || expected || null, actual_result || actual || null, passed ? 1 : 0, priority || null, type || null]
     );
 
     const [rows] = await pool.execute(
@@ -310,7 +311,8 @@ router.post('/test-cases', authMiddleware, async (req, res) => {
 router.put('/test-cases/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, preconditions, steps, expected_result, priority, type } = req.body;
+    // 支持前端字段名到数据库字段名的映射
+    const { title, description, preconditions, precondition, steps, expected_result, expected, actual_result, actual, priority, type, passed } = req.body;
 
     // 验证测试用例属于当前用户
     const [existing] = await pool.execute(
@@ -323,14 +325,16 @@ router.put('/test-cases/:id', authMiddleware, async (req, res) => {
 
     await pool.execute(
       `UPDATE test_cases
-       SET title = ?, description = ?, preconditions = ?, steps = ?, expected_result = ?, priority = ?, type = ?
+       SET title = ?, description = ?, preconditions = ?, steps = ?, expected_result = ?, actual_result = ?, passed = ?, priority = ?, type = ?
        WHERE id = ? AND user_id = ?`,
       [
         title !== undefined ? title.trim() : existing[0].title,
         description !== undefined ? (description || null) : existing[0].description,
-        preconditions !== undefined ? (preconditions || null) : existing[0].preconditions,
+        preconditions !== undefined ? (preconditions || precondition || null) : existing[0].preconditions,
         steps !== undefined ? (steps || null) : existing[0].steps,
-        expected_result !== undefined ? (expected_result || null) : existing[0].expected_result,
+        expected_result !== undefined ? (expected_result || expected || null) : existing[0].expected_result,
+        actual_result !== undefined ? (actual_result || actual || null) : existing[0].actual_result,
+        passed !== undefined ? (passed ? 1 : 0) : existing[0].passed,
         priority !== undefined ? priority : existing[0].priority,
         type !== undefined ? type : existing[0].type,
         id,

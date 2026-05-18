@@ -2,9 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const http = require('http');
+const https = require('https');
 const multer = require('multer');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
+
+// Load environment variables from .env
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const { pool, ensureTables } = require('./config/db');
 const authRoutes = require('./routes/auth');
 const chatRoutes = require('./routes/chat');
@@ -24,12 +29,18 @@ const profileRoutes = require('./routes/profile');
 const groupChatRoutes = require('./routes/groupChat');
 const fileManagerRoutes = require('./routes/fileManager');
 const testCaseRoutes = require('./routes/testCase');
+const passwordRoutes = require('./routes/passwords');
 const messageWs = require('./services/messageWs');
 const { authMiddleware } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 8090;
+const HTTPS_PORT = process.env.HTTPS_PORT || 8443;
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_change_in_production';
+
+// SSL certificate paths (self-signed for development)
+const SSL_KEY = path.join(__dirname, '..', 'ssl', 'key.pem');
+const SSL_CERT = path.join(__dirname, '..', 'ssl', 'cert.pem');
 
 // Multer config for file uploads
 const uploadDir = path.join(__dirname, '..', 'uploads');
@@ -152,6 +163,7 @@ app.use('/api/messages', authMiddleware, messagesRoutes);
 app.use('/api/group-chats', authMiddleware, groupChatRoutes);
 app.use('/api/file', authMiddleware, fileManagerRoutes);
 app.use('/api/test-case', authMiddleware, testCaseRoutes);
+app.use('/api', authMiddleware, passwordRoutes);
 
 // Admin API (configurable admin username)
 app.use('/api/admin', authMiddleware, (req, res, next) => {
@@ -258,14 +270,9 @@ async function start() {
       }
     });
 
-    // Create explicit HTTP server
-    const server = http.createServer(app);
-
-    // Attach user messaging WebSocket
-    messageWs.attach(server);
-
-    server.listen(PORT, () => {
-      console.log(`[Server] Personal Assistant Backend running on http://localhost:${PORT}`);
+    // Listen on HTTP only — SSL termination is handled by nginx reverse proxy
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`[Server] Personal Assistant Backend running on http://0.0.0.0:${PORT}`);
     });
   } catch (err) {
     console.error('[Server] Failed to start:', err);

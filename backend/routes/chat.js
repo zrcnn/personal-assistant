@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../config/db');
 const { authMiddleware } = require('../middleware/auth');
 const aiService = require('../services/aiService');
+const { spawnChatAgent } = require('../services/chatAgentService');
 
 const router = express.Router();
 
@@ -186,8 +187,8 @@ router.post('/:id/messages', authMiddleware, async (req, res) => {
     const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    // Build enhanced system prompt with current time context
-    const systemPrompt = `你是一个友好、专业的AI助手NE。请用简洁清晰的中文回答用户问题。
+    // Base system prompt with time context
+    const baseSystemPrompt = `你是一个友好、专业的AI助手NE。请用简洁清晰的中文回答用户问题。
 
 **当前时间信息**：
 - 日期：${dateStr}
@@ -195,6 +196,7 @@ router.post('/:id/messages', authMiddleware, async (req, res) => {
 - 时区：${timezone}
 
 你可以帮助用户进行对话、编程、写作、翻译、总结等各种任务。如果用户询问时间相关的问题，请使用上述时间信息回答。`;
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -210,24 +212,63 @@ router.post('/:id/messages', authMiddleware, async (req, res) => {
       content: m.content
     }));
 
-    // Send message via direct AI API with context
+    // 检测是否需要联网搜索
+    const searchDecision = aiService.shouldSearch(content);
+    
     let fullContent = '';
     let resolved = false;
+    let searchUsed = false;
 
     try {
-      await aiService.sendChatStream(
-        conversationHistory,
-        content,
-        (chunk) => {
-          fullContent += chunk;
-          res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
-        },
-        { systemPrompt, userId: req.user.id }
-      );
+      if (searchDecision.needsSearch) {
+        // 需要实时信息 → 派生子代理，使用 OpenClaw 内置的 web_search 工具
+        console.log(`[Chat] 检测到搜索需求: "${searchDecision.query}"，派生子代理执行搜索...`);
+        res.write(`data: ${JSON.stringify({ type: 'search_start', query: searchDecision.query })}\n\n`);
+        
+        // 构建子代理任务
+        const contextText = conversationHistory.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n');
+        const task = `用户正在询问需要实时信息的问题。
+
+对话上下文：
+${contextText}
+
+用户最新问题："${content}"
+
+请使用 web_search 工具搜索获取最新信息，然后基于搜索结果回答用户。搜索关键词应该简洁但包含足够的上下文。
+
+请直接给出你的回答，不需要解释你是如何获取信息的。`;
+
+        const result = await spawnChatAgent({
+          label: `chat-search-${id}`,
+          task: task,
+          timeout: 60000,  // 60秒超时
+          userId: req.user.id  // 传递 userId，让子代理使用用户的模型
+        });
+
+        fullContent = result.result || '抱歉，搜索暂时不可用。';
+        searchUsed = true;
+        
+        res.write(`data: ${JSON.stringify({ type: 'search_complete' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ content: fullContent })}\n\n`);
+      } else {
+        // 不需要实时信息 → 直接调用 API
+        await aiService.sendChatStream(
+          conversationHistory,
+          content,
+          (chunk) => {
+            fullContent += chunk;
+            res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+          },
+          { 
+            systemPrompt: baseSystemPrompt, 
+            userId: req.user.id
+          }
+        );
+      }
 
       resolved = true;
       const tokens = estimateTokens(fullContent);
-      res.write(`data: ${JSON.stringify({ done: true, tokens })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true, tokens, searchUsed })}\n\n`);
 
       // Save assistant message to DB
       if (fullContent) {

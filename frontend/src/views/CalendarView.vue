@@ -59,7 +59,7 @@
           <div class="event-info">
             <strong>{{ e.title }}</strong>
             <span class="event-time">{{ formatTimeRange(e.start_time, e.end_time) }}</span>
-            <p v-if="e.description">{{ e.description }}</p>
+            <p v-if="e.description" class="event-desc">{{ e.description }}</p>
           </div>
           <div class="event-actions">
             <button @click="openEditor(e)" title="编辑">✏️</button>
@@ -103,8 +103,11 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
+const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 const eventColors = ['#4a9eff', '#ff6b6b', '#51cf66', '#ffd43b', '#cc5de8', '#ff922b']
@@ -368,7 +371,17 @@ watch([viewYear, viewMonth], () => {
 onMounted(() => { 
   viewYear.value = now.getFullYear()
   viewMonth.value = now.getMonth()
-  fetchEvents() 
+  fetchEvents()
+  // 检查 URL 参数中是否有 date，如果有则选中该日期
+  const queryDate = route.query.date
+  if (queryDate) {
+    selectedDate.value = queryDate
+    const d = new Date(queryDate)
+    if (!isNaN(d.getTime())) {
+      viewYear.value = d.getFullYear()
+      viewMonth.value = d.getMonth()
+    }
+  }
 })
 </script>
 
@@ -528,6 +541,7 @@ onMounted(() => {
 }
 .event-info strong { font-size: 15px; color: var(--text-primary); display: block; }
 .event-time { font-size: 12px; color: var(--text-muted); }
+.event-info .event-desc { font-size: 13px; color: var(--text-secondary); margin-top: 6px; white-space: pre-wrap; word-break: break-all; }
 .event-info p { font-size: 13px; color: var(--text-secondary); margin-top: 6px; white-space: pre-wrap; }
 .event-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 12px; }
 .event-actions button { background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px; opacity: 0.6; }

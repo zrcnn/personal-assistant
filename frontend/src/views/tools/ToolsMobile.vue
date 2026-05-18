@@ -24,12 +24,10 @@ const tools = [
   { icon: '📊', name: '模型用量', desc: 'AI 模型调用统计', route: '/model-usage' },
   { icon: '📡', name: '系统监控', desc: 'CPU、内存、磁盘状态', route: '/system' },
   { icon: '📅', name: '日历', desc: '日程管理', route: '/tools/calendar' },
-  { icon: '🍅', name: '番茄钟', desc: '专注计时管理', route: '/tools/pomodoro' },
   { icon: '🔖', name: '网址收藏', desc: '收藏常用网址', route: '/tools/bookmarks' },
   { icon: '🔧', name: 'JSON 工具', desc: 'JSON 格式化校验', route: '/tools/json' },
-  { icon: '📁', name: '文件管理', desc: '文件浏览、上传、下载、打包', route: '/tools/file-manager' },
   { icon: '📰', name: '新闻', desc: 'AI编程新闻日报', route: '/tools/news' },
-  { icon: '📝', name: '测试用例', desc: 'AI 自动生成测试用例', route: '/tools/test-case' },
+  { icon: '🔐', name: '密码存储', desc: '安全加密的密码管理器', route: '/tools/password' },
 ]
 
 const isAdminUser = computed(() => localStorage.getItem('username') === 'zrc')

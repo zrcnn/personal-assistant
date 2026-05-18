@@ -272,6 +272,8 @@ async function ensureTables() {
       preconditions TEXT DEFAULT NULL,
       steps TEXT DEFAULT NULL,
       expected_result TEXT DEFAULT NULL,
+      actual_result TEXT DEFAULT NULL,
+      passed TINYINT(1) DEFAULT 0,
       priority ENUM('high','medium','low') DEFAULT 'medium',
       type ENUM('functional','regression','smoke','integration','unit','acceptance') DEFAULT 'functional',
       ai_generated TINYINT(1) DEFAULT 0,
@@ -283,6 +285,40 @@ async function ensureTables() {
       INDEX idx_requirement_id (requirement_id),
       INDEX idx_product_id (product_id),
       INDEX idx_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // ===== Password Manager Tables =====
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS password_categories (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      name VARCHAR(50) NOT NULL,
+      color VARCHAR(20) DEFAULT '#1a1a2e',
+      sort_order INT DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS passwords (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      category_id INT NULL,
+      title VARCHAR(200) NOT NULL,
+      username VARCHAR(200) DEFAULT NULL,
+      password_encrypted TEXT NOT NULL,
+      url VARCHAR(500) DEFAULT NULL,
+      notes TEXT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (category_id) REFERENCES password_categories(id) ON DELETE SET NULL,
+      INDEX idx_user_id (user_id),
+      INDEX idx_category_id (category_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 

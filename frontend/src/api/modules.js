@@ -135,6 +135,39 @@ export const userApiKeysAPI = {
   }
 }
 
+export const passwordAPI = {
+  // 密码分类
+  getCategories() {
+    return api.get('/api/password-categories')
+  },
+  createCategory(data) {
+    return api.post('/api/password-categories', data)
+  },
+  updateCategory(id, data) {
+    return api.put(`/api/password-categories/${id}`, data)
+  },
+  deleteCategory(id) {
+    return api.delete(`/api/password-categories/${id}`)
+  },
+
+  // 密码
+  list(params) {
+    return api.get('/api/passwords', { params })
+  },
+  get(id) {
+    return api.get(`/api/passwords/${id}`)
+  },
+  create(data) {
+    return api.post('/api/passwords', data)
+  },
+  update(id, data) {
+    return api.put(`/api/passwords/${id}`, data)
+  },
+  delete(id) {
+    return api.delete(`/api/passwords/${id}`)
+  }
+}
+
 export const testCaseAPI = {
   // 产品管理
   getProducts() {
@@ -181,5 +214,10 @@ export const testCaseAPI = {
   // AI 生成
   generateTestCases(data) {
     return api.post('/api/test-case/generate', data)
+  },
+
+  // 导出测试用例
+  exportTestCases(params) {
+    return api.get('/api/test-case/export', { params, responseType: 'blob' })
   }
 }

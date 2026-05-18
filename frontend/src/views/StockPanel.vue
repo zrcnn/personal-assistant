@@ -594,14 +594,101 @@ function drawLineChart() {
 
 // ============ Market Indices ============
 
+// 行业大类映射表（前端兜底用）
+const SECTOR_CATEGORY_MAP = {
+  'AI': ['人工智能', 'AI芯片', '算力', '大模型', 'AIGC', '数据要素', '云计算', 'SaaS'],
+  '半导体/芯片': ['半导体', '集成电路', '芯片', '光刻胶', '存储芯片', '先进封装'],
+  '消费电子': ['消费电子', '其他家电', '智能穿戴', '光学元件'],
+  '通信': ['通信设备', '5G', '通信线缆及配套', '光模块', '卫星导航'],
+  '计算机': ['计算机设备', '软件开发', '信创', '网络安全', 'IT服务'],
+  '电子': ['电子', '元件', 'PCB', '被动元件', '面板'],
+  '机器人': ['机器人', '工业自动化', '数控机床', '减速器'],
+  '航天军工': ['航天装备', '航空装备', '军工电子', '船舶制造', '兵器'],
+  '汽车': ['汽车', '车身附件及饰件', '汽车零部件', '轮胎'],
+  '新能源车': ['新能源车', '锂电池', '燃料电池', '充电桩'],
+  '医药': ['医药', '化学制药', '中药', '生物制品', '医药商业', '医疗器械'],
+  '生物科技': ['生物科技', '基因测序', '创新药', '疫苗'],
+  '医疗服务': ['医疗服务', '诊断服务', '医院', '医美'],
+  '食品饮料': ['食品饮料', '白酒', '啤酒', '乳制品', '调味品'],
+  '家电': ['家电', '白色家电', '小家电'],
+  '银行': ['银行'],
+  '证券': ['证券'],
+  '保险': ['保险'],
+  '石油/石化': ['石油', '石油开采', '石化', '油田服务', '油气开采'],
+  '煤炭': ['煤炭', '焦炭'],
+  '有色金属': ['有色金属', '黄金', '铜', '铝', '锂', '稀土', '贵金属'],
+  '钢铁': ['钢铁'],
+  '化工': ['化工', '化肥', '农药', '改性塑料', '涂料'],
+  '房地产': ['房地产', '房产租赁经纪', '物业管理'],
+  '电力': ['电力', '火电', '水电', '核电', '风电', '光伏'],
+  '传媒': ['传媒', '游戏', '影视', '广告', '出版', '印刷'],
+  '交通运输': ['交通运输', '物流', '港口', '航运', '航空', '铁路'],
+}
+
+function mapSectorToCategory(name) {
+  for (const [cat, keywords] of Object.entries(SECTOR_CATEGORY_MAP)) {
+    for (const kw of keywords) {
+      if (name.includes(kw)) return cat
+    }
+  }
+  return null
+}
+
+async function fetchSectorsFromEastmoney() {
+  // 直接从东方财富获取行业板块数据（浏览器端请求）
+  try {
+    const url = 'http://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=60&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f12,f14,f2,f3'
+    const res = await fetch(url)
+    const data = await res.json()
+    const items = data.data?.diff || []
+
+    // 聚合为大类
+    const categoryMap = {}
+    for (const item of items) {
+      const rawName = item.f14 || ''
+      const category = mapSectorToCategory(rawName)
+      if (!category) continue
+      const entry = {
+        name: rawName,
+        code: item.f12 || '',
+        current: item.f2 || 0,
+        change_pct: item.f3 || 0,
+        trend: (item.f3 || 0) >= 0 ? 'up' : 'down',
+      }
+      if (!categoryMap[category]) categoryMap[category] = []
+      categoryMap[category].push(entry)
+    }
+
+    // 每个大类取涨幅最高的为代表
+    const results = []
+    for (const [cat, entries] of Object.entries(categoryMap)) {
+      entries.sort((a, b) => b.change_pct - a.change_pct)
+      const rep = entries[0]
+      results.push({
+        name: cat,
+        code: rep.code,
+        current: rep.current,
+        change_pct: rep.change_pct,
+        trend: rep.trend,
+        sub_count: entries.length,
+      })
+    }
+    results.sort((a, b) => b.change_pct - a.change_pct)
+    return results.slice(0, 20)
+  } catch (err) {
+    console.error('Eastmoney sector fetch error:', err)
+    return []
+  }
+}
+
 async function loadMarketData() {
   try {
-    const [indicesRes, sectorsRes] = await Promise.all([
+    const [indicesRes, sectorsData] = await Promise.all([
       api.get('/market/indices', { baseURL: '/stock-api' }),
-      api.get('/market/sectors', { baseURL: '/stock-api' }),
+      fetchSectorsFromEastmoney(),  // 前端直接获取
     ])
     marketIndices.value = indicesRes.data.indices || []
-    sectors.value = sectorsRes.data.sectors || []
+    sectors.value = sectorsData
 
     // Load sector kline data for sparklines
     await loadSectorKlines()

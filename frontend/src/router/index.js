@@ -88,11 +88,7 @@ const routes = [
         name: 'Calendar',
         component: lazyLoad(() => import('../views/CalendarView.vue'))
       },
-      {
-        path: 'tools/pomodoro',
-        name: 'Pomodoro',
-        component: lazyLoad(() => import('../views/PomodoroView.vue'))
-      },
+
       {
         path: 'tools/bookmarks',
         name: 'Bookmarks',
@@ -103,11 +99,7 @@ const routes = [
         name: 'JsonTool',
         component: lazyLoad(() => import('../views/JsonToolView.vue'))
       },
-      {
-        path: 'tools/draw',
-        name: 'Draw',
-        component: lazyLoad(() => import('../views/DrawView.vue'))
-      },
+
       {
         path: 'tools/ocr',
         name: 'OCR',
@@ -123,15 +115,16 @@ const routes = [
         name: 'VideoPlayer',
         component: lazyLoad(() => import('../views/VideoPlayerView.vue'))
       },
-      {
-        path: 'tools/file-manager',
-        name: 'FileManager',
-        component: lazyLoad(() => import('../views/FileManager.vue'))
-      },
+
       {
         path: 'tools/news',
         name: 'News',
         component: lazyLoad(() => import('../views/NewsView.vue'))
+      },
+      {
+        path: 'tools/password',
+        name: 'PasswordManager',
+        component: lazyLoad(() => import('../views/PasswordManagerView.vue'))
       },
       {
         path: 'system',
@@ -175,11 +168,7 @@ const routes = [
         name: 'ModelUsage',
         component: lazyLoad(() => import('../views/ModelUsageView.vue'))
       },
-      {
-        path: 'tools/test-case',
-        name: 'TestCase',
-        component: lazyLoad(() => import('../views/TestCaseView.vue'))
-      }
+
     ]
   },
   {

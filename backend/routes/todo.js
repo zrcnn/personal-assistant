@@ -210,7 +210,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
             },
             body: JSON.stringify({
               title: `✅ 完成：${todoForEvent.title}`,
-              description: todoForEvent.description || null,
+              description: todoForEvent.description ? (todoForEvent.solution ? `任务描述：${todoForEvent.description}\n\n解决方式：${todoForEvent.solution}` : todoForEvent.description) : (todoForEvent.solution ? `解决方式：${todoForEvent.solution}` : null),
               start_time: formatDateTime(now),
               end_time: formatDateTime(endTime),
               color: '#51cf66',

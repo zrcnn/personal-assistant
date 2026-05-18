@@ -351,15 +351,73 @@ class StockCrawler:
 
         return results
 
+    # 细分行业 -> 大类行业映射表
+    SECTOR_CATEGORY_MAP = {
+        # 科技/AI/电子
+        'AI': ['人工智能', 'AI芯片', '算力', '大模型', 'AIGC', '数据要素', '云计算', 'SaaS'],
+        '半导体/芯片': ['半导体', '集成电路', '芯片', '光刻胶', '存储芯片', '先进封装'],
+        '消费电子': ['消费电子', '其他家电', '智能穿戴', '光学元件'],
+        '通信': ['通信设备', '5G', '通信线缆及配套', '光模块', '卫星导航'],
+        '计算机': ['计算机设备', '软件开发', '信创', '网络安全', 'IT服务'],
+        '电子': ['电子', '元件', 'PCB', '被动元件', '面板'],
+        # 高端制造
+        '机器人': ['机器人', '工业自动化', '数控机床', '减速器'],
+        '航天军工': ['航天装备', '航空装备', '军工电子', '船舶制造', '兵器'],
+        '汽车': ['汽车', '车身附件及饰件', '汽车零部件', '轮胎'],
+        '新能源车': ['新能源车', '锂电池', '燃料电池', '充电桩'],
+        '机械设备': ['通用设备', '专用设备', '工程机械', '机器人'],
+        # 医药生物
+        '医药': ['医药', '化学制药', '中药', '生物制品', '医药商业', '医疗器械'],
+        '生物科技': ['生物科技', '基因测序', '创新药', '疫苗'],
+        '医疗服务': ['医疗服务', '诊断服务', '医院', '医美'],
+        # 大消费
+        '食品饮料': ['食品饮料', '白酒', '啤酒', '乳制品', '调味品'],
+        '家电': ['家电', '白色家电', '小家电'],
+        '纺织服装': ['纺织服装', '服装家纺'],
+        '商贸零售': ['商贸零售', '电商', '超市'],
+        '旅游酒店': ['旅游酒店', '餐饮', '景区'],
+        # 金融
+        '银行': ['银行'],
+        '证券': ['证券'],
+        '保险': ['保险'],
+        '多元金融': ['多元金融', '金融科技'],
+        # 周期/资源
+        '石油/石化': ['石油', '石油开采', '石化', '油田服务', '油气开采'],
+        '煤炭': ['煤炭', '焦炭'],
+        '有色金属': ['有色金属', '黄金', '铜', '铝', '锂', '稀土', '贵金属'],
+        '钢铁': ['钢铁'],
+        '化工': ['化工', '化肥', '农药', '改性塑料', '涂料'],
+        '建材': ['建材', '水泥', '玻璃', '陶瓷'],
+        # 房地产/基建
+        '房地产': ['房地产', '房产租赁经纪', '物业管理'],
+        '建筑装饰': ['建筑装饰', '基础建设', '工程咨询'],
+        '电力': ['电力', '火电', '水电', '核电', '风电', '光伏'],
+        '环保': ['环保', '污水处理', '固废处理'],
+        # 交运物流
+        '交通运输': ['交通运输', '物流', '港口', '航运', '航空', '铁路'],
+        # 传媒
+        '传媒': ['传媒', '游戏', '影视', '广告', '出版', '印刷'],
+        # 综合
+        '其他': ['综合', '其他专业服务', '会展服务'],
+    }
+
+    def _map_sector_to_category(self, sector_name):
+        """将细分行业名映射到大类"""
+        for category, keywords in self.SECTOR_CATEGORY_MAP.items():
+            for kw in keywords:
+                if kw in sector_name:
+                    return category
+        return None  # 无法映射
+
     def get_sector_heatmap(self):
-        """获取行业板块涨跌幅"""
+        """获取行业板块涨跌幅（聚合为大类行业）"""
         try:
             url = 'http://push2.eastmoney.com/api/qt/clist/get'
             params = {
-                'pn': '1', 'pz': '30', 'po': '1', 'np': '1',
+                'pn': '1', 'pz': '60', 'po': '1', 'np': '1',
                 'ut': 'bd1d9ddb04089700cf9c27f6f7426281',
                 'fltt': '2', 'invt': '2', 'fid': 'f3',
-                'fs': 'm:90+t:1',  # 行业板块
+                'fs': 'm:90+t:2',  # 行业板块（t:2=行业分类，t:1=地域分类）
                 'fields': 'f12,f14,f2,f3',
             }
             headers = {
@@ -369,16 +427,43 @@ class StockCrawler:
             resp = requests.get(url, params=params, headers=headers, timeout=10)
             data = resp.json()
 
-            results = []
+            # 聚合为大类行业：{category: [{name, change_pct, ...}]}
+            category_data = {}
             for item in data.get('data', {}).get('diff', []):
-                results.append({
-                    'name': item.get('f14', ''),
+                raw_name = item.get('f14', '')
+                # 跳过带ⅡⅢ的细分行业（用大类映射）
+                category = self._map_sector_to_category(raw_name)
+                if not category:
+                    continue
+                entry = {
+                    'name': raw_name,
                     'code': item.get('f12', ''),
                     'current': item.get('f2', 0),
                     'change_pct': item.get('f3', 0),
                     'trend': 'up' if item.get('f3', 0) >= 0 else 'down',
+                }
+                if category not in category_data:
+                    category_data[category] = []
+                category_data[category].append(entry)
+
+            # 每个大类取涨幅最高的子行业为代表
+            results = []
+            for category, entries in category_data.items():
+                # 按涨跌幅排序，取最高的作为该大类代表
+                entries.sort(key=lambda x: x['change_pct'], reverse=True)
+                rep = entries[0]
+                results.append({
+                    'name': category,
+                    'code': rep['code'],
+                    'current': rep['current'],
+                    'change_pct': rep['change_pct'],
+                    'trend': rep['trend'],
+                    'sub_count': len(entries),  # 该大类包含的子行业数
                 })
-            return results[:20]  # 取前20个行业
+
+            # 按涨跌幅排序，取前20
+            results.sort(key=lambda x: x['change_pct'], reverse=True)
+            return results[:20]
         except Exception as e:
             print(f"[Sector] Error: {e}")
             return []

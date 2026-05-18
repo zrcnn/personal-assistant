@@ -1,15 +1,33 @@
-const express = require('express');
-const { pool: dbPool } = require('../config/db');
-const { authMiddleware } = require('../middleware/auth');
-const router = express.Router();
+#!/usr/bin/env node
+// migrate_model_usage_api.js
+// Updates modelUsage.js to read from database instead of filesystem
 
-const CATEGORY_LABELS = {
-  'kat-coder': { name: 'KAT-Coder 模型', color: '#6c5ce7', icon: '🟣' },
-  'system': { name: '系统', color: '#636e72', icon: '⚙️' },
-  'other': { name: '其他', color: '#dfe6e9', icon: '⚪' }
-};
+const fs = require('fs');
+const path = require('path');
 
-// ── GET /api/model-usage ────────────────────────────────────────────
+const filePath = path.join(__dirname, '../routes/modelUsage.js');
+let content = fs.readFileSync(filePath, 'utf8');
+
+// Add db pool import after existing imports
+const dbImport = `const { pool: dbPool } = require('../config/db');\n`;
+content = content.replace(
+  "const { authMiddleware, adminOnly } = require('../middleware/auth');",
+  `const { authMiddleware, adminOnly } = require('../middleware/auth');
+const { pool: dbPool } = require('../config/db');`
+);
+
+// Replace categorizeProvider to use 'kat' consistently
+content = content.replace(
+  /if \(provider === 'kat-coder-pro-v2' \|\| provider === 'custom-wanqing-streamlakeapi-com'\) return 'kat';\n  if \(provider === 'custom-wanqing' \|\| provider\.toLowerCase\(\)\.includes\('wanqing'\)\) return 'kat';/,
+  `if (provider === 'kat-coder-pro-v2' || provider === 'custom-wanqing-streamlakeapi-com') return 'kat';
+  if (provider === 'custom-wanqing' || provider.toLowerCase().includes('wanqing')) return 'kat';`
+);
+
+// Replace the entire GET /api/model-usage handler
+const oldHandlerStart = '// ── GET /api/model-usage ────────────────────────────────────────────';
+const oldHandlerEnd = "    res.json(stats);\n\n  } catch (err) {";
+
+const newHandler = `// ── GET /api/model-usage ────────────────────────────────────────────
 router.get('/', authMiddleware, async (req, res) => {
   console.log('[ModelUsage API] group=' + req.query.group);
   try {
@@ -46,7 +64,7 @@ router.get('/', authMiddleware, async (req, res) => {
     
     // Get filtered stats
     const [filteredRows] = await dbPool.execute(
-      `SELECT 
+      \`SELECT 
         COUNT(*) as totalRequests,
         COALESCE(SUM(input_tokens),0) as totalInput,
         COALESCE(SUM(output_tokens),0) as totalOutput,
@@ -54,7 +72,7 @@ router.get('/', authMiddleware, async (req, res) => {
         COALESCE(SUM(cache_write_tokens),0) as totalCacheWrite,
         COALESCE(SUM(total_tokens),0) as totalTokens,
         COALESCE(SUM(cost),0) as totalCost
-      FROM model_usage_records ${whereClause}`,
+      FROM model_usage_records \${whereClause}\`,
       params
     );
     
@@ -62,7 +80,7 @@ router.get('/', authMiddleware, async (req, res) => {
     
     // Get category breakdown
     const [catRows] = await dbPool.execute(
-      `SELECT category, provider, model_id, 
+      \`SELECT category, provider, model_id, 
         COUNT(*) as requests,
         SUM(input_tokens) as inputTokens,
         SUM(output_tokens) as outputTokens,
@@ -70,9 +88,9 @@ router.get('/', authMiddleware, async (req, res) => {
         SUM(cache_write_tokens) as cacheWriteTokens,
         SUM(total_tokens) as totalTokens,
         SUM(cost) as cost
-      FROM model_usage_records ${whereClause}
+      FROM model_usage_records \${whereClause}
       GROUP BY category, provider, model_id
-      ORDER BY requests DESC`,
+      ORDER BY requests DESC\`,
       params
     );
     
@@ -103,14 +121,14 @@ router.get('/', authMiddleware, async (req, res) => {
     
     // Get session count
     const [sessRows] = await dbPool.execute(
-      `SELECT COUNT(DISTINCT session_id) as cnt FROM model_usage_records ${whereClause}`,
+      \`SELECT COUNT(DISTINCT session_id) as cnt FROM model_usage_records \${whereClause}\`,
       params
     );
     stats.totalSessions = sessRows[0].cnt;
     
     // Get period
     const [periodRows] = await dbPool.execute(
-      `SELECT MIN(timestamp) as minTs, MAX(timestamp) as maxTs FROM model_usage_records ${whereClause}`,
+      \`SELECT MIN(timestamp) as minTs, MAX(timestamp) as maxTs FROM model_usage_records \${whereClause}\`,
       params
     );
     if (periodRows[0].minTs) stats.period.from = periodRows[0].minTs.toISOString();
@@ -166,16 +184,16 @@ router.get('/', authMiddleware, async (req, res) => {
     const bucketExpr = group === 'day'
       ? 'DATE(timestamp)'
       : group === 'week'
-      ? `CONCAT(YEAR(timestamp), '-W', LPAD(WEEK(timestamp, 3), 2, '0'))`
+      ? \`CONCAT(YEAR(timestamp), '-W', LPAD(WEEK(timestamp, 3), 2, '0'))\`
       : group === 'month'
-      ? 'DATE_FORMAT(timestamp, "%Y-%m")'
+      ? 'DATE_FORMAT(timestamp, \'%Y-%m\')'
       : 'YEAR(timestamp)';
     
     const [tsRows] = await dbPool.execute(
-      `SELECT ${bucketExpr} as bucket, category, COUNT(*) as requests
-      FROM model_usage_records ${whereClause}
+      \`SELECT \${bucketExpr} as bucket, category, COUNT(*) as requests
+      FROM model_usage_records \${whereClause}
       GROUP BY bucket, category
-      ORDER BY bucket`,
+      ORDER BY bucket\`,
       params
     );
     
@@ -186,11 +204,11 @@ router.get('/', authMiddleware, async (req, res) => {
     
     // Get recent sessions
     const [recentRows] = await dbPool.execute(
-      `SELECT session_id, COUNT(*) as requests, MAX(timestamp) as lastActivity
-      FROM model_usage_records ${whereClause}
+      \`SELECT session_id, COUNT(*) as requests, MAX(timestamp) as lastActivity
+      FROM model_usage_records \${whereClause}
       GROUP BY session_id
       ORDER BY lastActivity DESC
-      LIMIT 20`,
+      LIMIT 20\`,
       params
     );
     stats.recentSessions = recentRows.map(row => ({
@@ -209,10 +227,12 @@ router.get('/', authMiddleware, async (req, res) => {
     
     res.json(stats);
 
-  } catch (err) {
-    console.error('[ModelUsage] Get error:', err);
-    res.status(500).json({ error: '获取模型用量失败' });
-  }
-});
+  } catch (err) {`;
 
-module.exports = router;
+content = content.replace(
+  content.substring(content.indexOf(oldHandlerStart), content.indexOf(oldHandlerEnd) + oldHandlerEnd.length),
+  newHandler
+);
+
+fs.writeFileSync(filePath, content);
+console.log('modelUsage.js updated to read from database.');
